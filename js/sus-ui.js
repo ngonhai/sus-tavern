@@ -254,7 +254,7 @@
 
   // ---- revolver info: hover the gun (or its seat chip); tap on touch screens ----
   function showGun(p, x, y, sticky) {
-    const g = U.view; if (!g || p < 0 || p >= g.n || U.spec || p !== U.me) return;   // you can only inspect your own revolver const gn = g.gun[p], rem = Math.max(0, Sus.CH - gn.pos), risk = g.alive[p] ? Math.round(100 / Math.max(1, rem)) : 0; let d = '';
+    const g = U.view; if (!g || p < 0 || p >= g.n || U.spec || p !== U.me) return; /* own revolver only */ const gn = g.gun[p], rem = Math.max(0, Sus.CH - gn.pos), risk = g.alive[p] ? Math.round(100 / Math.max(1, rem)) : 0; let d = '';
     for (let k = 0; k < Sus.CH; k++) d += '<i class="' + (k < gn.pos ? 'used' : '') + '"></i>';
     const canPull = sticky && !U.spec && p === U.me && g.phase === 'trigger' && g.shooters[g.sidx] === U.me;
     const el = $('gunpanel'); el.innerHTML = '<b>' + esc(t('gunT', { n: g.names[p] })) + '</b><div class="gp-ch">' + d + '</div><div>' + t('gunL', { r: rem }) + '</div><div>' + t('gunUsed', { a: gn.pos }) + '</div><div class="gp-risk">' + t('gunRisk', { p: risk }) + '</div>' + (canPull ? '<button type="button" class="btn btn-pull" id="gp-pull">' + t('gunPull') + '</button>' : '') + (sticky ? '<button type="button" class="btn btn-secondary" id="gp-close">' + t('gunClose') + '</button>' : '');
