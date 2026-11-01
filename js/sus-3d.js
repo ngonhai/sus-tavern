@@ -132,7 +132,7 @@ const S3D = (function () {
     const snout = { pig: .1, fox: .22, dog: .13, goat: .04, octo: 0, penguin: .1, hawk: .1, turtle: .02 }[char];
     const face = new THREE.Mesh(new THREE.PlaneGeometry(fs, fs), new THREE.MeshBasicMaterial({ map: ftex, transparent: true, depthWrite: false })); face.position.set(0, -.01, -(headR[char] * .98 + snout * .5 + .004)); face.rotation.y = Math.PI; head.add(face);
     const p = { s, char, root, body, torso, head, face, ftex, fctx: c.getContext('2d'), expr: 'neutral', hit: 0, dead: false, fall: 0, lean: 0, look: null, arms: [], col, chair };
-    scene.add(root); [1, -1].forEach(side => { const a = makeArm(s, side, char === 'penguin' ? M(D) : fur, char === 'penguin' ? D : S, (char === 'octo' ? .6 : sp.tw) / 2 + .04, sp.th); p.arms.push(a); scene.add(a.root); });
+    root.userData.pseat = s; scene.add(root); [1, -1].forEach(side => { const a = makeArm(s, side, char === 'penguin' ? M(D) : fur, char === 'penguin' ? D : S, (char === 'octo' ? .6 : sp.tw) / 2 + .04, sp.th); p.arms.push(a); scene.add(a.root); });
     setFaceTex(p, 'neutral'); return p;
   }
 
@@ -150,7 +150,7 @@ const S3D = (function () {
     const L1 = .6, L2 = .6, Sh = a.shoulder, T = a.pos, dv = T.clone().sub(Sh), d = clamp(dv.length(), .05, L1 + L2 - .01), dir = dv.normalize();
     const al = (L1 * L1 - L2 * L2 + d * d) / (2 * d), h = Math.sqrt(Math.max(0, L1 * L1 - al * al)), perp = a.pole.clone().sub(dir.clone().multiplyScalar(a.pole.dot(dir))).normalize();
     const E = Sh.clone().addScaledVector(dir, al).addScaledVector(perp, h), Tc = Sh.clone().addScaledVector(dir, d); seg(a.up, Sh, E); seg(a.fo, E, Tc); a.hand.position.copy(Tc);
-    if (a.lockQ) a.hand.quaternion.copy(a.lockQ); else a.hand.quaternion.setFromUnitVectors(V(0, 0, -1), Tc.clone().sub(E).normalize()); setGrip(a.hand, a.grip);
+    if (a.lockQ) a.hand.quaternion.copy(a.lockQ); else a.hand.quaternion.setFromUnitVectors(V(0, 0, -1), Tc.clone().sub(E).normalize()); setGrip(a.hand, a.grip); if (a.point) a.hand.userData.fingers[1].rotation.x = 0;
   }
   const moveHand = (arm, dest, ms, ease) => { const a = arm.pos.clone(), b = dest.clone(); return tween(ms, u => arm.pos.lerpVectors(a, b, u), ease); };
   const gripTo = (arm, v, ms) => { const a = arm.grip; return tween(ms, u => { arm.grip = a + (v - a) * u; }, lin); };
@@ -261,6 +261,23 @@ const S3D = (function () {
     }
     unfocus(); await wait(250);
   }
+  // ---- gestures: slam the table with both fists / point at someone ----
+  async function slam(sidx) {
+    if (!ok || !players[sidx]) return false; const P = players[sidx]; if (P.armLock || P.dead) return false; P.armLock = true;
+    const pose = (arm, y, f) => sw(sidx, arm.side * .3, y, f);
+    await Promise.all(P.arms.map(a => Promise.all([gripTo(a, 1, 160), moveHand(a, pose(a, TY + .62, .5), 280, eo)])));
+    await Promise.all(P.arms.map(a => moveHand(a, pose(a, TY + .04, .62), 110, lin)));
+    Snd.play('slam'); cine.shake = Math.max(cine.shake, .9); cineTo('shake', 0, 380);
+    const hop = []; cards.forEach(r => { if (!r.busy && (r.inPile || r.owner !== viewSeat())) hop.push([r.mesh, r.mesh.position.y]); }); tween(300, u => { hop.forEach(h => { h[0].position.y = h[1] + Math.sin(u * Math.PI) * .03; }); }, lin);
+    guns.forEach(g => { if (!g.userData.held) { const y0 = g.position.y; tween(300, u => { if (!g.userData.held) g.position.y = y0 + Math.sin(u * Math.PI) * .025; }, lin); } });
+    await wait(200); await Promise.all(P.arms.map(a => Promise.all([gripTo(a, 0, 250), moveHand(a, a.rest, 340)]))); P.armLock = false; return true;
+  }
+  async function point(by, at) {
+    if (!ok || !players[by] || !players[at] || by === at) return false; const P = players[by]; if (P.armLock || P.dead) return false; P.armLock = true; const arm = P.arms[0];
+    const tgt = sw(at, 0, 1.2, 0), d = tgt.clone().sub(arm.shoulder).normalize(), dest = arm.shoulder.clone().addScaledVector(d, 1.0); dest.y = Math.max(dest.y, TY + .3);
+    P.lookTo = at; arm.point = true; setExpr(by, 'smug'); await Promise.all([gripTo(arm, .85, 150), moveHand(arm, dest, 320, eo)]); const pe = players[at].expr; if (!players[at].dead) setExpr(at, 'scared');
+    await wait(1100); if (!players[at].dead) setExpr(at, pe === 'scared' ? 'neutral' : pe); setExpr(by, 'neutral'); await Promise.all([gripTo(arm, 0, 200), moveHand(arm, arm.rest, 340)]); arm.point = false; P.lookTo = null; P.armLock = false; return true;
+  }
   // blood: droplets spray from the head onto the felt and linger as stains
   const splatTex = (() => { let tx; return () => { if (tx) return tx; const c = document.createElement('canvas'); c.width = c.height = 64; const g = c.getContext('2d'); g.fillStyle = '#9b1530'; for (let i = 0; i < 9; i++) { const a = Math.random() * 6.28, d = 6 + Math.random() * 14, r = 3 + Math.random() * 7; g.beginPath(); g.arc(32 + Math.cos(a) * d, 32 + Math.sin(a) * d, r, 0, 6.28); g.fill(); } g.beginPath(); g.arc(32, 32, 11, 0, 6.28); g.fill(); tx = new THREE.CanvasTexture(c); return tx; }; })();
   function bloodTable(p) {
@@ -295,9 +312,9 @@ const S3D = (function () {
   const ray = new THREE.Raycaster(), ptr = new THREE.Vector2();
   function pickAt(ev) {
     const r = canvas.getBoundingClientRect(); ptr.set(((ev.clientX - r.left) / r.width) * 2 - 1, -((ev.clientY - r.top) / r.height) * 2 + 1); ray.setFromCamera(ptr, cam);
-    const targets = []; cards.forEach(c => { if (c.owner === viewSeat() && !c.inPile) targets.push(c.mesh); }); guns.forEach(g => targets.push(g)); targets.push(tableMesh);
+    const targets = []; cards.forEach(c => { if (c.owner === viewSeat() && !c.inPile) targets.push(c.mesh); }); guns.forEach(g => targets.push(g)); targets.push(tableMesh); players.forEach((p, i) => { if (p && i !== viewSeat()) targets.push(p.root); });
     const hits = ray.intersectObjects(targets, true); if (!hits.length) return { type: 'none' };
-    let o = hits[0].object; while (o) { if (o.userData.cardId != null) return { type: 'card', id: o.userData.cardId }; if (o.userData.gunSeat != null) return { type: 'gun', p: o.userData.gunSeat, x: ev.clientX, y: ev.clientY, touch: ev.pointerType === 'touch' }; if (o.userData.table) return { type: 'table' }; o = o.parent; }
+    let o = hits[0].object; while (o) { if (o.userData.cardId != null) return { type: 'card', id: o.userData.cardId }; if (o.userData.gunSeat != null) return { type: 'gun', p: o.userData.gunSeat, x: ev.clientX, y: ev.clientY, touch: ev.pointerType === 'touch' }; if (o.userData.table) return { type: 'table' }; if (o.userData.pseat != null) return { type: 'player', seat: o.userData.pseat }; o = o.parent; }
     return { type: 'none' };
   }
   function onMove(ev) { const r = canvas.getBoundingClientRect(); view.parX = ((ev.clientX - r.left) / r.width - .5) * 2; view.parY = -((ev.clientY - r.top) / r.height - .5) * 2; const p = pickAt(ev); canvas.style.cursor = p.type === 'card' || p.type === 'gun' ? 'pointer' : 'default'; hoverId = p.type === 'card' ? p.id : null; const gs = p.type === 'gun' && ev.pointerType !== 'touch' ? p.p : -1; if (gs >= 0) cb.hover({ type: 'gun', p: gs, x: ev.clientX, y: ev.clientY }); else if (hoverGun >= 0) cb.hover(null); hoverGun = gs; }
@@ -307,7 +324,7 @@ const S3D = (function () {
     raf = requestAnimationFrame(frame); const dt = Math.min(.05, (now - lastT) / 1000 || .016); lastT = now; const t = now / 1000; stepTweens(dt); stepFx(dt);
     players.forEach((p, s) => { if (!p) return; const idle = Math.sin(t * 1.2 + s) * .004;
       if (!p.dead && !p.busy) { p.body.position.y = .7 + idle; p.body.rotation.x = 0; } else if (p.dead && !p.busy) { p.body.position.y = .45; p.body.rotation.x = -1.25; }
-      p.head.rotation.x = Math.sin(t * .7 + s) * .02; const lk = (game && game.alive && n > 1) ? (SEAT[(s + 1) % n] ? sw((s + 1) % n, 0, 1.4, 0) : V(0, 1.4, 0)) : V(0, 1.4, 0);
+      p.head.rotation.x = Math.sin(t * .7 + s) * .02; const lk = p.lookTo != null && SEAT[p.lookTo] ? sw(p.lookTo, 0, 1.4, 0) : (game && game.alive && n > 1) ? (SEAT[(s + 1) % n] ? sw((s + 1) % n, 0, 1.4, 0) : V(0, 1.4, 0)) : V(0, 1.4, 0);
       if (!p.dead) { const lp = p.head.getWorldPosition(V(0, 0, 0)), dir = lk.clone().sub(lp).applyAxisAngle(UP, SEAT[s].phi); p.head.rotation.y += (clamp(Math.atan2(-dir.x, -dir.z) * .5, -.7, .7) - p.head.rotation.y) * .04; }
       p.arms.forEach((a, i) => { if (a.pos.equals(a.rest) && !a.lockQ) a.pos.y = a.rest.y + Math.sin(t * 1.2 + i) * .002; solveArm(a); });
     });
@@ -333,6 +350,6 @@ const S3D = (function () {
   }
   function start() { if (!ok || running) return; running = true; resize(); lastT = performance.now(); raf = requestAnimationFrame(frame); }
   function stop() { running = false; cancelAnimationFrame(raf); clearInterval(hidT); }
-  return { err: () => lastErr, init, setup, sync, start, stop, setView, setSelected, setExpr, deal, playCards, shout, reveal, pullStart, pullEnd, onPick: f => { cb.pick = f; }, onHover: f => { cb.hover = f; }, isOk: () => ok };
+  return { err: () => lastErr, init, setup, sync, start, stop, setView, setSelected, setExpr, deal, playCards, shout, reveal, pullStart, pullEnd, slam, point, onPick: f => { cb.pick = f; }, onHover: f => { cb.hover = f; }, isOk: () => ok };
 })();
 window.S3D = S3D;

@@ -221,11 +221,15 @@
   function onPick3(p) {
     const g = U.view; if (!g || U.spec) return; Snd.unlock();
     if (p.type === 'card') toggleCard(p.id);
+    else if (p.type === 'table') { const now = Date.now(); if (now - (U.lastTable || 0) < 450) { U.lastTable = 0; doSlam(); } else U.lastTable = now; }
+    else if (p.type === 'player') { if (p.seat !== U.me) doPoint(p.seat); }
     else if (p.type === 'gun') { if (p.touch) { showGun(p.p, p.x, p.y, true); } else if (p.p === U.me) doPull(); }
   }
   const VOICE = { pig: 1.15, fox: 1.25, dog: .95, goat: 1.35, octo: .8, penguin: 1.2, hawk: 1.1, turtle: .7 };
+  async function doSlam() { if (!U.d3 || U.busy || U.pending || U.spec) return; const ok = await S3().slam(U.me); if (ok) Net.emote('slam'); }
+  async function doPoint(i) { if (!U.d3 || U.busy || U.pending || U.spec) return; const ok = await S3().point(U.me, i); if (ok) Net.emote('point' + i); }
   const EM = { laugh: ['laugh', '😂'], angry: ['hurt', '😠'], sus: ['smug', '🤨'], sweat: ['scared', '😰'] };
-  function showEmote(i, kind) { if (i < 0 || !EM[kind]) return; bubble(i, t('emotes')[kind] || kind, 1800); setExpr(i, EM[kind][0], 1800); Snd.play('select'); }
+  function showEmote(i, kind) { if (i < 0) return; if (kind === 'slam') { if (U.d3 && !U.busy) S3().slam(i); return; } if (/^point\d+$/.test(kind)) { if (U.d3 && !U.busy) S3().point(i, +kind.slice(5)); return; } if (!EM[kind]) return; bubble(i, t('emotes')[kind] || kind, 1800); setExpr(i, EM[kind][0], 1800); Snd.play('select'); }
   function doEmote(kind) { const g = U.view; if (!g || U.spec) return; showEmote(U.me, kind); Net.emote(kind); }
 
   // bots (local), dropped players (host), and a safety pull for a human who dithers

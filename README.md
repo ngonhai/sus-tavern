@@ -12,3 +12,8 @@ A Liar's Bar–style bluffing game, built from the Roulette project. Static HTML
 
 Keys: Enter = play, L = call liar, P/Space = pull. Tests: `node tests/engine.test.js`.
 Note: the whole game state lives in the room (hands included) — fine for friends, not cheat-proof.
+
+## 3D gestures
+- Double-click the table: slam it with both fists (can't spam: next slam only after the animation ends; also shown to other players online).
+- Click an animal: point at them.
+- BGM is now a soft jazz loop (Dm7–G7–Cmaj7–A7, walking bass, brushed ride, vibes).
