@@ -254,7 +254,7 @@
 
   // ---- revolver info: hover the gun (or its seat chip); tap on touch screens ----
   function showGun(p, x, y, sticky) {
-    const g = U.view; if (!g || p < 0 || p >= g.n) return; const gn = g.gun[p], rem = Math.max(0, Sus.CH - gn.pos), risk = g.alive[p] ? Math.round(100 / Math.max(1, rem)) : 0; let d = '';
+    const g = U.view; if (!g || p < 0 || p >= g.n || U.spec || p !== U.me) return;   // you can only inspect your own revolver const gn = g.gun[p], rem = Math.max(0, Sus.CH - gn.pos), risk = g.alive[p] ? Math.round(100 / Math.max(1, rem)) : 0; let d = '';
     for (let k = 0; k < Sus.CH; k++) d += '<i class="' + (k < gn.pos ? 'used' : '') + '"></i>';
     const canPull = sticky && !U.spec && p === U.me && g.phase === 'trigger' && g.shooters[g.sidx] === U.me;
     const el = $('gunpanel'); el.innerHTML = '<b>' + esc(t('gunT', { n: g.names[p] })) + '</b><div class="gp-ch">' + d + '</div><div>' + t('gunL', { r: rem }) + '</div><div>' + t('gunUsed', { a: gn.pos }) + '</div><div class="gp-risk">' + t('gunRisk', { p: risk }) + '</div>' + (canPull ? '<button type="button" class="btn btn-pull" id="gp-pull">' + t('gunPull') + '</button>' : '') + (sticky ? '<button type="button" class="btn btn-secondary" id="gp-close">' + t('gunClose') + '</button>' : '');
@@ -271,8 +271,8 @@
     $('btn-join-room').onclick = async () => { const n = needName(); if (!n) return; const code = $('input-room-code').value.trim(); if (code.length < 4) return; const r = await Net.joinOnline(code, n, U.myChar).catch(() => ({ ok: false, reason: 'noRoom' })); if (!r.ok) toast(t('noRoom')); else if (r.spectator) toast(t('youAreSpec')); };
     $('btn-start-game').onclick = () => { Snd.unlock(); Net.startOnline(); }; $('btn-leave-waiting').onclick = leaveToLobby; $('btn-leave-game').onclick = leaveToLobby;
     $('room-code-box').onclick = () => { const u = location.origin + location.pathname + '?room=' + Net.code(); (navigator.clipboard ? navigator.clipboard.writeText(u) : Promise.reject()).then(() => toast(t('copied'))).catch(() => {}); };
-    $('seats').addEventListener('mouseover', e => { const el = e.target.closest('.seat2d'); if (!el || !U.view || e.pointerType === 'touch') return; const r = el.getBoundingClientRect(); showGun(+el.dataset.i, r.right, r.top + r.height / 2); });
-    $('seats').addEventListener('mouseleave', () => hideGun()); $('seats').addEventListener('click', e => { const el = e.target.closest('.seat2d'); if (!el || !U.view) return; const r = el.getBoundingClientRect(); showGun(+el.dataset.i, r.right, r.top + r.height / 2, true); });
+    $('seats').addEventListener('mouseover', e => { const el = e.target.closest('.seat2d'); if (!el || !U.view || e.pointerType === 'touch' || +el.dataset.i !== U.me) return; const r = el.getBoundingClientRect(); showGun(+el.dataset.i, r.right, r.top + r.height / 2); });
+    $('seats').addEventListener('mouseleave', () => hideGun()); $('seats').addEventListener('click', e => { const el = e.target.closest('.seat2d'); if (!el || !U.view || +el.dataset.i !== U.me) return; const r = el.getBoundingClientRect(); showGun(+el.dataset.i, r.right, r.top + r.height / 2, true); });
     document.addEventListener('pointerdown', e => { if (U.gunSticky && !e.target.closest('#gunpanel') && !e.target.closest('.seat2d')) hideGun(true); });
     $('btn-rules').onclick = helpModal; $('btn-play').onclick = doPlay; $('btn-liar').onclick = doCall; $('btn-pull').onclick = doPull;
     $('hand').onclick = e => { const c = e.target.closest('.card'); if (c) toggleCard(+c.dataset.id); };
