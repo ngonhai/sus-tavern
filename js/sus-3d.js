@@ -38,9 +38,11 @@ const S3D = (function () {
   const inked = (m, k) => { const o = new THREE.Mesh(m.geometry, inkM); o.scale.setScalar(k || 1.07); o.userData.ink = true; m.add(o); return m; };
   const mk = (geo, mat, x, y, z, parent, ink) => { const m = new THREE.Mesh(geo, mat); m.position.set(x || 0, y || 0, z || 0); m.castShadow = true; m.receiveShadow = true; if (ink !== false) inked(m); if (parent) parent.add(m); return m; };
   const box = (w, h, d, mat, x, y, z, p, ink) => mk(new THREE.BoxGeometry(w, h, d), mat, x, y, z, p, ink);
-  const cyl = (rt, rb, h, seg, mat, x, y, z, p, ink) => mk(new THREE.CylinderGeometry(rt, rb, h, seg), mat, x, y, z, p, ink);
-  const sph = (r, mat, x, y, z, p, sx, sy, sz) => { const m = mk(new THREE.SphereGeometry(r, 9, 7), mat, x, y, z, p); m.scale.set(sx || 1, sy || 1, sz || 1); return m; };
-  const cone = (r, h, seg, mat, x, y, z, p) => mk(new THREE.ConeGeometry(r, h, seg), mat, x, y, z, p);
+  const cyl = (rt, rb, h, seg, mat, x, y, z, p, ink) => mk(new THREE.CylinderGeometry(rt, rb, h, Math.max(seg, 14)), mat, x, y, z, p, ink);
+  // capsule: rounded limb / finger segment, axis = +Y, total length = len (caps included)
+  const cap = (r, len, mat, x, y, z, p, ink) => mk(new THREE.CapsuleGeometry(r, Math.max(.001, len - 2 * r), 6, 14), mat, x, y, z, p, ink);
+  const sph = (r, mat, x, y, z, p, sx, sy, sz) => { const m = mk(new THREE.SphereGeometry(r, 20, 14), mat, x, y, z, p); m.scale.set(sx || 1, sy || 1, sz || 1); return m; };
+  const cone = (r, h, seg, mat, x, y, z, p) => mk(new THREE.ConeGeometry(r, h, Math.max(seg, 12)), mat, x, y, z, p);
 
   // ---------------------------------------------------------------- seats ----
   function layout(count) {
@@ -98,12 +100,12 @@ const S3D = (function () {
     const h = new THREE.Group(), sk = M(S), dk = M(D), R0 = headR[char], white = M('#fff3e0'), ink = M('#2a1a14');
     switch (char) {
       case 'pig': sph(R0, sk, 0, 0, 0, h); cyl(.075, .08, .06, 9, dk, 0, -.05, -R0 - .03, h).rotation.x = Math.PI / 2; [[-1], [1]].forEach(([s]) => { const e = cone(.075, .13, 4, dk, s * .15, .16, -.02, h); e.rotation.z = -s * .9; e.rotation.x = .5; }); break;
-      case 'fox': sph(R0, sk, 0, 0, 0, h, 1.08, .92, 1); cone(.075, .2, 6, white, 0, -.05, -R0 - .06, h).rotation.x = -Math.PI / 2; [-1, 1].forEach(s => { cone(.075, .22, 4, sk, s * .12, .2, 0, h).rotation.z = -s * .15; cone(.04, .1, 4, ink, s * .12, .27, 0, h); box(.07, .08, .06, white, s * .16, -.06, -.1, h); }); break;
-      case 'dog': sph(R0, sk, 0, 0, 0, h); box(.11, .08, .13, M('#f1dcb8'), 0, -.06, -R0 - .02, h); sph(.03, ink, 0, -.03, -R0 - .09, h); [-1, 1].forEach(s => box(.06, .19, .09, dk, s * .19, .0, 0, h).rotation.z = s * .25); break;
-      case 'goat': cyl(.14, .1, .34, 8, sk, 0, 0, 0, h); sph(.12, sk, 0, .12, 0, h); cone(.05, .12, 4, M('#d8cba8'), 0, -.14, -.07, h); [-1, 1].forEach(s => { const hr = cone(.04, .24, 5, M('#c9b27a'), s * .09, .27, .02, h); hr.rotation.z = -s * .45; hr.rotation.x = -.45; box(.12, .05, .05, sk, s * .17, .06, 0, h).rotation.z = s * .4; }); break;
+      case 'fox': sph(R0, sk, 0, 0, 0, h, 1.08, .92, 1); cone(.075, .2, 6, white, 0, -.05, -R0 - .06, h).rotation.x = -Math.PI / 2; [-1, 1].forEach(s => { cone(.075, .22, 4, sk, s * .12, .2, 0, h).rotation.z = -s * .15; cone(.04, .1, 4, ink, s * .12, .27, 0, h); sph(.055, white, s * .15, -.065, -.09, h, 1, .8, .85); }); break;
+      case 'dog': sph(R0, sk, 0, 0, 0, h); sph(.075, M('#f1dcb8'), 0, -.06, -R0 + .0, h, 1.05, .8, 1.25); sph(.032, ink, 0, -.035, -R0 - .115, h, 1.1, .8, .9); [-1, 1].forEach(s => sph(.1, dk, s * .2, -.02, .0, h, .42, 1.05, .62).rotation.z = s * .25); break;
+      case 'goat': sph(.15, sk, 0, 0, 0, h, .9, 1.2, .95); sph(.11, sk, 0, -.12, -.03, h, .85, 1, 1); cone(.05, .12, 4, M('#d8cba8'), 0, -.14, -.07, h); [-1, 1].forEach(s => { const hr = cone(.04, .24, 5, M('#c9b27a'), s * .09, .27, .02, h); hr.rotation.z = -s * .45; hr.rotation.x = -.45; sph(.075, sk, s * .19, .06, 0, h, 1.5, .42, .6).rotation.z = s * .4; }); break;
       case 'penguin': sph(R0, sk, 0, 0, 0, h); sph(.15, white, 0, -.03, -.06, h, 1, 1.05, .8); cone(.045, .11, 5, M('#ff9a2e'), 0, -.05, -R0 - .05, h).rotation.x = -Math.PI / 2; break;
-      case 'hawk': sph(R0, sk, 0, 0, 0, h); sph(.14, M('#efe0c0'), 0, -.02, -.05, h, 1, 1, .8); const bk = cone(.05, .13, 5, M('#f2c23a'), 0, -.06, -R0 - .05, h); bk.rotation.x = -Math.PI / 2 - .35; [-1, 1].forEach(s => box(.1, .03, .05, dk, s * .07, .07, -R0 + .02, h).rotation.z = -s * .35); [-1, 1].forEach(s => cone(.04, .12, 4, dk, s * .1, .19, .02, h)); break;
-      case 'turtle': sph(R0, sk, 0, 0, 0, h, .95, 1, 1.1); box(.08, .02, .03, dk, 0, -.08, -R0 - .02, h); break;
+      case 'hawk': sph(R0, sk, 0, 0, 0, h); sph(.14, M('#efe0c0'), 0, -.02, -.05, h, 1, 1, .8); const bk = cone(.05, .13, 5, M('#f2c23a'), 0, -.06, -R0 - .05, h); bk.rotation.x = -Math.PI / 2 - .35; [-1, 1].forEach(s => sph(.055, dk, s * .075, .075, -R0 + .03, h, 1.2, .4, .8).rotation.z = -s * .35); [-1, 1].forEach(s => cone(.04, .12, 4, dk, s * .1, .19, .02, h)); break;
+      case 'turtle': sph(R0, sk, 0, 0, 0, h, .95, 1, 1.1); sph(.045, dk, 0, -.085, -R0 + .0, h, 1.2, .3, .7); break;
       case 'octo': sph(R0, sk, 0, .02, 0, h, 1, 1.15, 1); [[0, .22, -.1], [-.1, .16, .1], [.11, .12, .08]].forEach(p => sph(.035, M('#c3a1f0'), p[0], p[1], p[2], h)); break;
     }
     return h;
@@ -120,53 +122,119 @@ const S3D = (function () {
       const tw = sp.tw, th = sp.th, td = sp.td;
       if (char === 'penguin') { sph(.5, fur, 0, th / 2, 0, torso, tw, th, td); sph(.5, M('#f6f0e2'), 0, th / 2 - .02, -.05, torso, tw * .78, th * .86, td * .85); }
       else if (char === 'pig') { sph(.5, cloth, 0, th / 2, 0, torso, tw, th, td); sph(.5, vestM, 0, th / 2 - .02, -.04, torso, tw * .96, th * .82, td * .9); }
-      else { sph(.5, cloth, 0, th / 2, 0, torso, tw, th, td); sph(.5, vestM, 0, th / 2 - .02, -.04, torso, tw * .93, th * .8, td * .9); box(.07, th * .7, .03, cloth, 0, th / 2 - .02, -td / 2 - .02, torso); }
+      else { sph(.5, cloth, 0, th / 2, 0, torso, tw, th, td); sph(.5, vestM, 0, th / 2 - .02, -.04, torso, tw * .93, th * .8, td * .9); { const zf = -.04 - .45 * td - .02, tc = M('#d9483b'), tie = cone(.055, .22, 12, tc, 0, th * .6, zf, torso); tie.rotation.x = Math.PI; tie.scale.z = .3; sph(.032, tc, 0, th * .6 + .105, zf, torso, 1.15, .8, .7); } }
       if (char === 'hawk') [1, -1].forEach(sd => { const w = cone(.1, .5, 4, dk, sd * (tw / 2 + .07), th * .45, .05, torso); w.rotation.z = sd * .12; w.scale.z = .4; w.rotation.x = Math.PI; });
       if (char === 'turtle') { const sh = sph(.5, M('#4f9a55'), 0, th / 2 + .04, td / 2 - .02, torso, tw * .95, th * 1.0, .55); [[-.15, .2], [.15, .2], [0, .0], [-.2, -.12], [.2, -.12]].forEach(q => sph(.12, M('#3f8a4a'), q[0], th / 2 + q[1] * .6, td / 2 + .2, torso, 1.3, 1, .35)); }
       if (char === 'fox') { const tl = cone(.1, .5, 6, fur, 0, .1, td / 2 + .22, torso); tl.rotation.x = Math.PI / 2 + .5; cone(.06, .15, 6, M('#fff3e0'), 0, .0, td / 2 + .45, torso).rotation.x = Math.PI / 2 + .5; }
-      box(.2, .08, .2, fur, 0, th - .01, 0, torso);
+      cyl(.1, .13, .1, 14, fur, 0, th - .01, 0, torso);
       [1, -1].forEach(sd => sph(.13, char === 'penguin' ? M(D) : fur, sd * (tw / 2 + .02), th * .82, 0, torso, 1.1, .9, 1.1));
     }
     const head = makeHead(char, S, D); head.scale.setScalar(sp.head); head.position.set(0, char === 'octo' ? 1.0 : sp.th + headR[char] * sp.head * .78, 0); body.add(head);
     const c = document.createElement('canvas'); c.width = c.height = 256; const ftex = new THREE.CanvasTexture(c); ftex.colorSpace = THREE.SRGBColorSpace; const fs = headR[char] * 2.1;
     const snout = { pig: .1, fox: .22, dog: .13, goat: .04, octo: 0, penguin: .1, hawk: .1, turtle: .02 }[char];
     const face = new THREE.Mesh(new THREE.PlaneGeometry(fs, fs), new THREE.MeshBasicMaterial({ map: ftex, transparent: true, depthWrite: false })); face.position.set(0, -.01, -(headR[char] * .98 + snout * .5 + .004)); face.rotation.y = Math.PI; head.add(face);
-    const p = { s, char, root, body, torso, head, face, ftex, fctx: c.getContext('2d'), expr: 'neutral', hit: 0, dead: false, fall: 0, lean: 0, look: null, arms: [], col, chair };
-    root.userData.pseat = s; scene.add(root); [1, -1].forEach(side => { const a = makeArm(s, side, char === 'penguin' ? M(D) : fur, char === 'penguin' ? D : S, (char === 'octo' ? .6 : sp.tw) / 2 + .04, sp.th); p.arms.push(a); scene.add(a.root); });
+    const hmeshes = []; head.traverse(o => { if (o.isMesh && !o.userData.ink && o !== face) hmeshes.push(o); });
+    const p = { s, char, root, body, torso, head, face, hmeshes, ftex, fctx: c.getContext('2d'), expr: 'neutral', hit: 0, dead: false, fall: 0, lean: 0, look: null, arms: [], col, chair };
+    root.userData.pseat = s; scene.add(root); [1, -1].forEach(side => { const a = makeArm(s, side, char === 'penguin' ? M(D) : fur, char === 'penguin' ? D : S, (char === 'octo' ? .6 : sp.tw) / 2 + .04, sp.th, char === 'penguin' || char === 'octo' ? null : cloth); p.arms.push(a); scene.add(a.root); });
     setFaceTex(p, 'neutral'); return p;
   }
 
+  // ---------------------------------------------------------------- hands (round palm, 4 jointed fingers, 2-piece thumb) ----
+  // Hand space: origin = wrist, fingers point to -Z, palm faces -Y, the thumb sits on -X for a right hand (side = +1).
+  const PALM = .1;                                                    // wrist -> finger bases
+  const FINGERS = [{ x: -.036, r: .0152, L: [.044, .032, .026] }, { x: -.012, r: .016, L: [.049, .036, .028] }, { x: .012, r: .0152, L: [.045, .033, .026] }, { x: .034, r: .0136, L: [.037, .026, .022] }];
+  const limb = (r, len, mat) => { const m = new THREE.Mesh(new THREE.CapsuleGeometry(r, Math.max(.002, len - 2 * r), 5, 12), mat); m.rotation.x = -Math.PI / 2; m.position.z = -len / 2; m.receiveShadow = true; inked(m, 1 + .0042 / r); return m; };
+  function makeHand(S, side) {
+    const g = new THREE.Group(), m = M(S);
+    sph(.05, m, 0, 0, -PALM / 2, g, 1.12, .6, 1.0);                   // palm
+    sph(.05, m, 0, -.002, -PALM + .016, g, 1.0, .52, .5);             // knuckle row
+    sph(.032, m, -side * .036, -.01, -.036, g, 1, .75, 1.25);         // thumb pad
+    const fingers = FINGERS.map(f => {
+      const root = new THREE.Group(); root.position.set(f.x * side, -.012, -PALM + .006); g.add(root);
+      const js = []; let par = root;
+      f.L.forEach((len, i) => { const j = new THREE.Group(); if (i) j.position.z = -f.L[i - 1]; par.add(j); j.add(limb(f.r * (1 - i * .07), len + .003, m)); js.push(j); par = j; });
+      js.root = root; return js;
+    });
+    const t0 = new THREE.Group(); t0.position.set(-side * .046, -.012, -.03); g.add(t0);
+    const t1 = new THREE.Group(); t0.add(t1); t1.add(limb(.0182, .046, m));
+    const t2 = new THREE.Group(); t2.position.z = -.046; t1.add(t2); t2.add(limb(.0158, .038, m));
+    g.userData = { fingers, thumb: [t0, t1, t2], side };
+    g.traverse(o => { if (o.isMesh) o.castShadow = false; });
+    return g;
+  }
+  const FIST = [-1.28, -1.5, -.95], GUNC = [-1.3, -.72, -.5], KC = [.92, 1, 1.04, 1.12];
+  // v: 0 = relaxed, 1 = closed; point = index finger stays straight; gun = fingers wrap a revolver grip
+  function setGrip(h, v, point, gun) {
+    const d = h.userData, side = d.side, B = gun ? GUNC : FIST;
+    d.fingers.forEach((js, i) => {
+      const m = point && i === 0 ? 0 : (.16 + .84 * v) * KC[i];
+      js.forEach((j, n) => { j.rotation.x = B[n] * m; });
+      js.root.rotation.y = side * (1.5 - i) * .055 * (1 - v);
+    });
+    const th = d.thumb;
+    if (gun) { th[0].rotation.set(-.2, side * .12, 0); th[1].rotation.x = -.3 * v; th[2].rotation.x = -.35 * v; }
+    else if (point) { th[0].rotation.set(-.15, side * .45, 0); th[1].rotation.x = -.05; th[2].rotation.x = -.05; }
+    else { th[0].rotation.set(-.25 - .35 * v, side * (.62 - .36 * v), 0); th[1].rotation.x = -.3 - .35 * v; th[2].rotation.x = -.25 - .5 * v; }
+  }
+  // default hand orientation: fingers follow the forearm but stay mostly level, palm down
+  const _bm = new THREE.Matrix4();
+  function handQFromDir(d) {
+    const f = d.clone(); f.y *= .4; f.normalize(); const zh = f.clone().negate(), yh = UP.clone().addScaledVector(zh, -UP.dot(zh));
+    if (yh.lengthSq() < 1e-4) yh.set(0, 0, 1); yh.normalize(); const xh = yh.clone().cross(zh); _bm.makeBasis(xh, yh, zh); return new THREE.Quaternion().setFromRotationMatrix(_bm);
+  }
+
   // ---------------------------------------------------------------- arms (2-bone IK, long cartoon arms) ----
-  function makeHand(S) { const g = new THREE.Group(), m = M(S); box(.1, .04, .1, m, 0, 0, 0, g); const f = []; for (let i = 0; i < 3; i++) { const q = new THREE.Group(); q.position.set(-.035 + i * .035, 0, -.05); box(.026, .026, .06, m, 0, 0, -.03, q, false); g.add(q); f.push(q); } const th = new THREE.Group(); th.position.set(.05, 0, -.01); box(.026, .026, .05, m, 0, 0, -.025, th, false); th.rotation.y = .5; g.add(th); g.userData = { fingers: f, thumb: th }; return g; }
-  const setGrip = (h, v) => { h.userData.fingers.forEach(f => { f.rotation.x = -1.3 * v; }); h.userData.thumb.rotation.y = .5 - .6 * v; };
-  function makeArm(s, side, fur, S, sx, th) {
-    const root = new THREE.Group(), hand = makeHand(S); hand.scale.setScalar(1.5);
-    const up = cyl(.06, .054, 1, 7, fur, 0, 0, 0, root), fo = cyl(.054, .045, 1, 7, fur, 0, 0, 0, root); root.add(hand);
-    const a = { root, up, fo, hand, s, side, pos: V(0, 0, 0), grip: 0, rest: sw(s, side * .24, TY + .07, .5), lockQ: null, shoulder: sw(s, side * (sx || .37), .7 + (th || .6) * .82, 0) };
+  function makeArm(s, side, fur, S, sx, th, sleeve) {
+    const root = new THREE.Group(), hand = makeHand(S, side);
+    const up = cyl(.054, .048, 1, 14, sleeve || fur, 0, 0, 0, root), fo = cyl(.04, .03, 1, 14, fur, 0, 0, 0, root);
+    const elbow = sph(sleeve ? .05 : .044, fur, 0, 0, 0, root), ring = sleeve ? cyl(.062, .062, 1, 18, sleeve, 0, 0, 0, root) : null; root.add(hand);
+    const a = { root, up, fo, elbow, ring, hand, s, side, pos: V(0, 0, 0), grip: 0, lockQ: null, lockW: 1, gun: false, rest: sw(s, side * .24, TY + .07, .5), shoulder: sw(s, side * (sx || .37), .7 + (th || .6) * .82, 0) };
     a.pos.copy(a.rest); a.pole = SEAT[s].right.clone().multiplyScalar(side * .8).add(V(0, -.9, 0)); return a;
   }
   function seg(mesh, A, B) { const d = B.clone().sub(A), l = d.length(); mesh.position.copy(A).addScaledVector(d, .5); mesh.quaternion.setFromUnitVectors(UP, d.normalize()); mesh.scale.set(1, Math.max(.001, l), 1); }
   function solveArm(a) {
     const L1 = .6, L2 = .6, Sh = a.shoulder, T = a.pos, dv = T.clone().sub(Sh), d = clamp(dv.length(), .05, L1 + L2 - .01), dir = dv.normalize();
     const al = (L1 * L1 - L2 * L2 + d * d) / (2 * d), h = Math.sqrt(Math.max(0, L1 * L1 - al * al)), perp = a.pole.clone().sub(dir.clone().multiplyScalar(a.pole.dot(dir))).normalize();
-    const E = Sh.clone().addScaledVector(dir, al).addScaledVector(perp, h), Tc = Sh.clone().addScaledVector(dir, d); seg(a.up, Sh, E); seg(a.fo, E, Tc); a.hand.position.copy(Tc);
-    if (a.lockQ) a.hand.quaternion.copy(a.lockQ); else a.hand.quaternion.setFromUnitVectors(V(0, 0, -1), Tc.clone().sub(E).normalize()); setGrip(a.hand, a.grip); if (a.point) a.hand.userData.fingers[1].rotation.x = 0;
+    const E = Sh.clone().addScaledVector(dir, al).addScaledVector(perp, h), Tc = Sh.clone().addScaledVector(dir, d); seg(a.up, Sh, E); seg(a.fo, E, Tc); a.elbow.position.copy(E);
+    if (a.ring) { const ud = E.clone().sub(Sh).normalize(); seg(a.ring, E.clone().addScaledVector(ud, -.075), E.clone().addScaledVector(ud, .004)); }
+    a.hand.position.copy(Tc); const q = handQFromDir(Tc.clone().sub(E).normalize()); if (a.lockQ) q.slerp(a.lockQ, a.lockW); a.hand.quaternion.copy(q);
+    setGrip(a.hand, a.grip, a.point, a.gun);
   }
   const moveHand = (arm, dest, ms, ease) => { const a = arm.pos.clone(), b = dest.clone(); return tween(ms, u => arm.pos.lerpVectors(a, b, u), ease); };
   const gripTo = (arm, v, ms) => { const a = arm.grip; return tween(ms, u => { arm.grip = a + (v - a) * u; }, lin); };
 
   // ---------------------------------------------------------------- guns ----
+  // The revolver lies on its side on the table. To fire, the right hand picks it up (palm on the right side of the grip, fingers wrapping the front),
+  // the gun swings up and its muzzle is pressed against the head: the contact point is found by casting a ray at the head's real meshes, so it never clips.
+  const GS = 1.3, MUZ = V(0, .03, .235), GRIPC = V(0, -.075, -.085), HOLD_OFF = V(-.0505, 0, -.071);
+  const GTILT = new THREE.Quaternion().setFromEuler(new THREE.Euler(-.35, 0, 0));
+  const HOLD_Q = new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(V(0, -1, 0), V(-1, 0, 0), V(0, 0, -1)));
+  const rotQ = (ax, a) => new THREE.Quaternion().setFromAxisAngle(ax, a);
   function makeGun(s) {
-    const g = new THREE.Group(), steel = M('#aebfc6'), dark = M('#4a5f6a');
-    box(.034, .06, .17, steel, 0, -.01, -.01, g); const bar = cyl(.014, .014, .22, 8, steel, 0, .03, .12, g); bar.rotation.x = Math.PI / 2; box(.01, .016, .012, M('#ff6a4d'), 0, .05, .22, g, false);
-    const dr = cyl(.047, .047, .075, 10, dark, 0, 0, 0, g); dr.rotation.x = Math.PI / 2; const gp = box(.03, .095, .045, M('#7e4526'), 0, -.075, -.085, g); gp.rotation.x = -.35;
-    const flash = new THREE.Mesh(new THREE.ConeGeometry(.05, .16, 7), new THREE.MeshBasicMaterial({ color: 0xffd36a, transparent: true, opacity: .95, depthWrite: false })); flash.rotation.x = Math.PI / 2; flash.position.z = .32; flash.visible = false; g.add(flash);
-    g.userData = { seat: s, flash, grip: V(0, -.07, -.085), held: null, kick: 0 }; g.traverse(o => { o.userData.gunSeat = s; }); g.scale.setScalar(1.0); return g;
+    const g = new THREE.Group(), steel = M('#b9c8ce'), dark = M('#4a5f6a');
+    box(.034, .06, .17, steel, 0, -.01, -.01, g); const bar = cyl(.014, .014, .22, 14, steel, 0, .03, .12, g); bar.rotation.x = Math.PI / 2; box(.01, .016, .012, M('#ff6a4d'), 0, .05, .22, g, false);
+    const dr = cyl(.047, .047, .075, 18, dark, 0, 0, 0, g); dr.rotation.x = Math.PI / 2; const gp = box(.03, .095, .045, M('#8a4f2a'), 0, -.075, -.085, g); gp.rotation.x = -.35;
+    const hm = box(.012, .034, .016, steel, 0, .04, -.09, g); hm.rotation.x = .5;
+    const flash = new THREE.Mesh(new THREE.SphereGeometry(.075, 12, 9), new THREE.MeshBasicMaterial({ color: 0xffd36a, transparent: true, opacity: .95, depthWrite: false })); flash.position.z = MUZ.z + .01; flash.position.y = MUZ.y; flash.visible = false; g.add(flash);
+    g.userData = { seat: s, flash, held: null, kick: 0, rest: { pos: V(0, 0, 0), q: new THREE.Quaternion() } }; g.traverse(o => { o.userData.gunSeat = s; }); g.scale.setScalar(GS); return g;
   }
-  function gunRest(s) { const g = guns[s]; g.position.copy(sw(s, .38, TY + .03, .62)); g.quaternion.copy(poseQ(s, 0, Math.PI, 0)); g.userData.held = null; }
+  function gunRest(s) { const g = guns[s], u = g.userData; u.rest.pos.copy(sw(s, .3, TY + .066, .66)); u.rest.q.copy(poseQ(s, 0, Math.PI, 0).multiply(rotQ(V(0, 0, 1), -Math.PI / 2))); g.position.copy(u.rest.pos); g.quaternion.copy(u.rest.q); u.held = null; }
+  // where the wrist and the hand's orientation must be for a gun at (pos, q)
+  function holdPose(pos, q) { const off = GRIPC.clone().multiplyScalar(GS).add(HOLD_OFF.clone().applyQuaternion(GTILT)).applyQuaternion(q); return { w: pos.clone().add(off), q: q.clone().multiply(GTILT).multiply(HOLD_Q) }; }
+  const AIM = { def: [.82, .06, .5], dog: [.55, .06, .8], fox: [.76, .06, .62], hawk: [.72, .05, .68], goat: [.72, .06, .66] }, aray = new THREE.Raycaster(), _lm = new THREE.Matrix4();
+  function aimPose(p) {
+    const P = players[p], S = SEAT[p], t = AIM[P.char] || AIM.def; P.head.updateWorldMatrix(true, true); const C = P.head.getWorldPosition(V(0, 0, 0)); C.y += headR[P.char] * SP[P.char].head * .32;   // aim at forehead height
+    const D = S.right.clone().multiplyScalar(t[0]).addScaledVector(UP, t[1]).addScaledVector(S.dir, t[2]).normalize();
+    aray.set(C.clone().addScaledVector(D, 1.4), D.clone().negate()); aray.far = 2.2; const hit = aray.intersectObjects(P.hmeshes, false)[0];
+    const H = hit ? hit.point.clone() : C.clone().addScaledVector(D, headR[P.char] * SP[P.char].head), M0 = H.addScaledVector(D, .012), f = D.clone().negate();
+    _lm.lookAt(f, V(0, 0, 0), UP); const q = new THREE.Quaternion().setFromRotationMatrix(_lm), pos = M0.sub(MUZ.clone().multiplyScalar(GS).applyQuaternion(q));
+    return { pos, q, dir: f };
+  }
   function placeGun(s) {
-    const g = guns[s], h = g.userData.held; if (!h) return; g.position.copy(h.hand.pos); g.lookAt(h.aim); g.position.copy(h.hand.pos).sub(g.userData.grip.clone().multiplyScalar(1.3).applyQuaternion(g.quaternion));
-    if (h.kick) { g.position.y += h.kick * .05; g.rotateX(-h.kick * .4); } h.hand.lockQ = g.quaternion.clone().multiply(new THREE.Quaternion().setFromAxisAngle(UP, Math.PI));
+    const g = guns[s], u = g.userData, h = u.held; if (!h) return; const ap = h.frozen || aimPose(s), k = eio(clamp(h.k, 0, 1)), arc = Math.sin(Math.PI * k), S = SEAT[s];
+    g.position.lerpVectors(u.rest.pos, ap.pos, k).addScaledVector(S.right, arc * .1).addScaledVector(UP, arc * .12); g.quaternion.slerpQuaternions(u.rest.q, ap.q, k);
+    if (h.kick) { g.position.addScaledVector(ap.dir, -h.kick * .05); g.quaternion.multiply(rotQ(V(1, 0, 0), -h.kick * .4)); }
+    const hp = holdPose(g.position, g.quaternion); h.hand.pos.copy(hp.w); h.hand.lockQ = hp.q;
   }
 
   // ---------------------------------------------------------------- cards ----
@@ -214,13 +282,13 @@ const S3D = (function () {
     await Promise.all(jobs); placeHands(g);
   }
   async function playCards(by, ids, count) {
-    if (!ok || !players[by]) return; const P = players[by], arm = P.arms[0], recs = ids.map(id => cards.get(id)).filter(Boolean); const base = game ? game.pile.length : 0;
+    if (!ok || !players[by]) return; const P = players[by], arm = P.arms[0], recs = ids.map(id => cards.get(id)).filter(Boolean); const base = game ? game.pile.length : 0, HB = SEAT[by].dir.clone().multiplyScalar(-.09);
     recs.forEach(r => { r.busy = true; });
     // reach to the hand, grab, push the cards onto the table centre
     const c0 = recs.length ? recs[0].mesh.position.clone() : sw(by, 0, TY + .1, .42);
-    await moveHand(arm, c0.clone().add(V(0, .1, 0)), 320); await moveHand(arm, c0.clone().add(V(0, .035, 0)), 120); await gripTo(arm, .8, 90);
+    await moveHand(arm, c0.clone().add(V(0, .1, 0)).add(HB), 320); await moveHand(arm, c0.clone().add(V(0, .035, 0)).add(HB), 120); await gripTo(arm, .8, 90);
     const from = recs.map(r => r.mesh.position.clone()), qf = recs.map(r => r.mesh.quaternion.clone()), mid = sw(by, 0, TY + .16, .85);
-    await Promise.all([moveHand(arm, mid, 380), tween(380, u => recs.forEach((r, i) => { r.mesh.position.lerpVectors(from[i], mid.clone().add(V(0, -.03 + i * .006, 0)), u); r.mesh.quaternion.slerpQuaternions(qf[i], poseQ(by, Math.PI, 0, 0), u); }))]);
+    await Promise.all([moveHand(arm, mid.clone().add(HB), 380), tween(380, u => recs.forEach((r, i) => { r.mesh.position.lerpVectors(from[i], mid.clone().add(V(0, -.03 + i * .006, 0)), u); r.mesh.quaternion.slerpQuaternions(qf[i], poseQ(by, Math.PI, 0, 0), u); }))]);
     await gripTo(arm, 0, 80); Snd.play('card');
     await tween(300, u => recs.forEach((r, i) => { const pp = pilePose(base + i, false); r.mesh.position.lerpVectors(mid.clone().add(V(0, -.03, 0)), pp.pos, u); r.mesh.quaternion.slerpQuaternions(poseQ(by, Math.PI, 0, 0), pp.q, u); }), eo);
     recs.forEach(r => { r.busy = false; r.inPile = true; r.owner = -1; }); await moveHand(arm, arm.rest, 360);
@@ -228,7 +296,7 @@ const S3D = (function () {
   async function shout(by, acc) {
     if (!ok || !players[by]) return; const P = players[by], arm = P.arms[1], target = SEAT[acc] ? sw(acc, 0, 1.3, 0) : V(0, 1.2, 0), from = sw(by, 0, 1.3, 0), d = target.clone().sub(from).normalize();
     focusOn(sw(acc, 0, 1.45, 0), .5, 7, 0); cine.shake = 1; cineTo('shake', 0, 500); document.body.classList.add('cine');
-    const dest = from.clone().addScaledVector(d, .85).add(V(0, .05, 0)); await moveHand(arm, dest, 360, eo); await wait(520); await moveHand(arm, arm.rest, 360);
+    const dest = from.clone().addScaledVector(d, .8).add(V(0, .05, 0)); arm.point = true; await Promise.all([gripTo(arm, 1, 160), moveHand(arm, dest, 360, eo)]); await wait(520); await Promise.all([gripTo(arm, 0, 200), moveHand(arm, arm.rest, 360)]); arm.point = false;
   }
   async function reveal(acc, cs) {
     if (!ok) return; const recs = cs.map(c => cards.get(c.id)).filter(Boolean), campos = cam.position.clone(), H = V(0, TY + .34, 0); recs.forEach(r => { r.busy = true; r.faceUp = true; if (r.real === 'D') r.mesh.material = cardMat('D'); });
@@ -240,25 +308,29 @@ const S3D = (function () {
   function focusOn(pt, k, fov, dolly) { cine.focus.copy(pt); cineTo('k', k, 500); cineTo('fov', -fov, 600); cineTo('dolly', dolly || 0, 600); document.body.classList.add('cine'); }
   function unfocus() { cineTo('k', 0, 700); cineTo('fov', 0, 700); cineTo('dolly', 0, 700); document.body.classList.remove('cine'); }
   async function pullStart(p, beats) {
-    if (!ok || !players[p]) return; const P = players[p], arm = P.arms[0], g = guns[p], u = g.userData; const head = () => P.head.getWorldPosition(V(0, 0, 0));
-    await moveHand(arm, g.position.clone().add(V(0, .12, 0)), 360); await moveHand(arm, g.position.clone().add(V(0, .04, 0)), 120); await gripTo(arm, .9, 100);
-    u.held = { hand: arm, aim: head(), kick: 0 }; const temple = sw(p, .12, 1.5, .16), a0 = arm.pos.clone();
+    if (!ok || !players[p]) return; const P = players[p], arm = P.arms[0], g = guns[p], u = g.userData, head = () => P.head.getWorldPosition(V(0, 0, 0));
+    // reach over the gun lying on the table, lower the hand onto the grip, close the fingers
+    const hp = holdPose(u.rest.pos, u.rest.q); arm.lockQ = hp.q; arm.lockW = 0; arm.gun = true;
+    await Promise.all([moveHand(arm, hp.w.clone().add(V(0, .15, 0)), 380), tween(380, e => { arm.lockW = e; }, lin)]);
+    await moveHand(arm, hp.w, 140); await gripTo(arm, 1, 150);
+    u.held = { hand: arm, k: 0, kick: 0, frozen: null };
     focusOn(head().add(V(0, .05, 0)), view.mode === 'pov' && view.seat === p ? .35 : .6, 12, .25); Snd.play('select');
-    await tween(700, uu => { arm.pos.lerpVectors(a0, temple, uu); u.held.aim.copy(head()); });
+    await tween(760, e => { u.held.k = e; }, lin);                    // swing the gun up; the muzzle ends on the head's surface
     for (let i = 0; i < beats; i++) { Snd.play('beat'); cine.shake = .25 + i * .1; cineTo('shake', 0, 420); await wait(520); }
   }
   async function pullEnd(p, dead) {
-    if (!ok || !players[p]) return; const P = players[p], g = guns[p], u = g.userData, h = u.held; if (!h) { unfocus(); return; }
+    if (!ok || !players[p]) return; const P = players[p], g = guns[p], u = g.userData, h = u.held; if (!h) { unfocus(); return; } const arm = h.hand;
     if (dead) {
-      u.flash.visible = true; flashLight.position.copy(g.position); flashLight.intensity = 60; cine.shake = 1.4; cineTo('shake', 0, 700); P.busy = true;
+      h.frozen = aimPose(p); u.flash.visible = true; flashLight.position.copy(g.position).addScaledVector(h.frozen.dir, .25); flashLight.intensity = 60; cine.shake = 1.4; cineTo('shake', 0, 700); P.busy = true;
       tween(120, e => { h.kick = e; }, eo).then(() => tween(300, e => { h.kick = 1 - e; }, eo)); tween(160, e => { flashLight.intensity = 60 * (1 - e); }, lin).then(() => { u.flash.visible = false; flashLight.intensity = 0; });
       bloodTable(p); setExpr(p, 'dead'); await wait(160); await tween(900, e => { P.fall = e; P.body.rotation.x = -1.25 * e; P.body.position.y = .7 - .25 * e; }, eio); P.dead = true; P.busy = false;
-      u.held = null; h.hand.lockQ = null; const gp = g.position.clone(); await Promise.all([gripTo(h.hand, 0, 150), tween(450, e => { g.position.lerpVectors(gp, sw(p, .38, TY + .03, .62), e); g.quaternion.slerp(poseQ(p, 0, Math.PI, 0), e); }, eo)]); h.hand.pos.copy(h.hand.rest); P.arms.forEach(a => { a.root.visible = false; });
     } else {
-      tween(90, e => { h.kick = e * .15; }, lin).then(() => tween(200, e => { h.kick = .15 * (1 - e); }, eo)); await wait(450);
-      const a0 = h.hand.pos.clone(), gr = sw(p, .38, TY + .1, .62); await tween(520, e => { h.hand.pos.lerpVectors(a0, gr, e); h.aim.lerp(V(g.position.x + SEAT[p].dir.x, TY, g.position.z + SEAT[p].dir.z), e * .2); });
-      u.held = null; h.hand.lockQ = null; await gripTo(h.hand, 0, 120); gunRest(p); await moveHand(h.hand, h.hand.rest, 420);
+      tween(90, e => { h.kick = e * .15; }, lin).then(() => tween(200, e => { h.kick = .15 * (1 - e); }, eo)); await wait(450); h.frozen = aimPose(p);
     }
+    await tween(650, e => { h.k = 1 - e; }, lin);                       // lower the gun back onto the table
+    await gripTo(arm, 0, 140); u.held = null; gunRest(p);
+    await Promise.all([moveHand(arm, arm.rest, 420), tween(420, e => { arm.lockW = 1 - e; }, lin)]); arm.lockQ = null; arm.gun = false;
+    if (dead) P.arms.forEach(a => { a.root.visible = false; });
     unfocus(); await wait(250);
   }
   // ---- gestures: slam the table with both fists / point at someone ----
@@ -326,9 +398,9 @@ const S3D = (function () {
       if (!p.dead && !p.busy) { p.body.position.y = .7 + idle; p.body.rotation.x = 0; } else if (p.dead && !p.busy) { p.body.position.y = .45; p.body.rotation.x = -1.25; }
       p.head.rotation.x = Math.sin(t * .7 + s) * .02; const lk = p.lookTo != null && SEAT[p.lookTo] ? sw(p.lookTo, 0, 1.4, 0) : (game && game.alive && n > 1) ? (SEAT[(s + 1) % n] ? sw((s + 1) % n, 0, 1.4, 0) : V(0, 1.4, 0)) : V(0, 1.4, 0);
       if (!p.dead) { const lp = p.head.getWorldPosition(V(0, 0, 0)), dir = lk.clone().sub(lp).applyAxisAngle(UP, SEAT[s].phi); p.head.rotation.y += (clamp(Math.atan2(-dir.x, -dir.z) * .5, -.7, .7) - p.head.rotation.y) * .04; }
-      p.arms.forEach((a, i) => { if (a.pos.equals(a.rest) && !a.lockQ) a.pos.y = a.rest.y + Math.sin(t * 1.2 + i) * .002; solveArm(a); });
     });
     guns.forEach((g, s) => { if (g.userData.held) placeGun(s); });
+    players.forEach(p => { if (p) p.arms.forEach((a, i) => { if (a.pos.equals(a.rest) && !a.lockQ) a.pos.y = a.rest.y + Math.sin(t * 1.2 + i) * .002; solveArm(a); }); });
     // hovered / selected cards lift smoothly; the target card faces the camera
     cards.forEach(r => { if (r.busy || r.owner !== viewSeat() || r.inPile || !r.home) return; const want = (selIds.has(r.id) ? .06 : 0) + (hoverId === r.id ? .025 : 0); r.mesh.position.y += (r.home.pos.y + want - r.mesh.position.y) * Math.min(1, dt * 14); });
     tcard.position.y = TY + .32 + Math.sin(t * 1.6) * .012; tcard.rotation.y = Math.atan2(cam.position.x - tcard.position.x, cam.position.z - tcard.position.z);
