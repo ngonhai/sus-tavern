@@ -17,7 +17,7 @@ const S3D = (function () {
   const SEAT = [];       // { phi, pos, dir, right, q }
   let n = 0, game = null, me = 0;
   const view = { mode: 'pov', seat: 0, parX: 0, parY: 0 }, camPos = V(0, 1.3, 1.2), camLook = V(0, .8, 0), cine = { dolly: 0, fov: 0, shake: 0, pitch: 0, roll: 0, k: 0, focus: V(0, 1, 0) };
-  let shared = false; const gi = s => shared ? 0 : s;   // shared revolver mode: a single gun (guns[0]) that slides to whoever has to shoot
+  let tcOff = 0, shared = false; const gi = s => shared ? 0 : s;   // shared revolver mode: a single gun (guns[0]) that slides to whoever has to shoot
   const players = [], cards = new Map(), guns = [], selIds = new Set(); let tcard, tcardTex, hoverId = null, glow, glowA = 0, lampSpot, flashLight, tableMesh, fxs = [];
   const cb = { pick: () => {}, hover: () => {} }; let hoverGun = -1;
 
@@ -313,11 +313,11 @@ const S3D = (function () {
     const dest = from.clone().addScaledVector(d, .8).add(V(0, .05, 0)); arm.point = true; await Promise.all([gripTo(arm, 1, 160), moveHand(arm, dest, 360, eo)]); await wait(520); await Promise.all([gripTo(arm, 0, 200), moveHand(arm, arm.rest, 360)]); arm.point = false;
   }
   async function reveal(acc, cs) {
-    if (!ok) return; const recs = cs.map(c => cards.get(c.id)).filter(Boolean), campos = cam.position.clone(), H = V(0, TY + .34, 0); recs.forEach(r => { r.busy = true; r.faceUp = true; if (r.real === 'D') r.mesh.material = cardMat('D'); });
-    tcard.visible = false; focusOn(V(0, TY + .3, 0), .55, 10, 0); const tgt = recs.map((r, i) => { const o = new THREE.Object3D(); o.position.copy(H).add(V((i - (recs.length - 1) / 2) * .14, 0, 0)); o.lookAt(campos); o.rotateX(Math.PI / 2); return o; });
+    if (!ok) return; const campos0 = cam.position.clone(), recs = cs.map(c => cards.get(c.id)).filter(Boolean), campos = cam.position.clone(), H = V(0, TY + .12, 0).addScaledVector(V(campos0.x, 0, campos0.z).normalize(), .32); recs.forEach(r => { r.busy = true; r.faceUp = true; if (r.real === 'D') r.mesh.material = cardMat('D'); });
+    tween(350, e => { tcOff = .12 * e; }, eo); focusOn(V(0, TY + .2, 0), .5, 10, 0);   /* the table card stays visible, lifted above the cards being checked */ const tgt = recs.map((r, i) => { const o = new THREE.Object3D(); o.position.copy(H).add(V((i - (recs.length - 1) / 2) * .14, 0, 0)); o.lookAt(campos); o.rotateX(Math.PI / 2); return o; });
     const from = recs.map(r => r.mesh.position.clone()), qf = recs.map(r => r.mesh.quaternion.clone()); Snd.play('flip');
     await tween(700, u => recs.forEach((r, i) => { r.mesh.position.lerpVectors(from[i], tgt[i].position, u); r.mesh.position.y += Math.sin(u * Math.PI) * .1; r.mesh.quaternion.slerpQuaternions(qf[i], tgt[i].quaternion, u); }), eo);
-    await wait(1300); recs.forEach(r => { r.busy = false; }); tcard.visible = true;
+    await wait(1300); recs.forEach(r => { r.busy = false; }); tween(350, e => { tcOff = .12 * (1 - e); }, eo);
   }
   function focusOn(pt, k, fov, dolly) { cine.focus.copy(pt); cineTo('k', k, 500); cineTo('fov', -fov, 600); cineTo('dolly', dolly || 0, 600); document.body.classList.add('cine'); }
   function unfocus() { cineTo('k', 0, 700); cineTo('fov', 0, 700); cineTo('dolly', 0, 700); document.body.classList.remove('cine'); }
@@ -426,7 +426,7 @@ const S3D = (function () {
     players.forEach(p => { if (p) p.arms.forEach((a, i) => { if (a.pos.equals(a.rest) && !a.lockQ) a.pos.y = a.rest.y + Math.sin(t * 1.2 + i) * .002; solveArm(a); }); });
     // hovered / selected cards lift smoothly; the target card faces the camera
     cards.forEach(r => { if (r.busy || r.owner !== viewSeat() || r.inPile || !r.home) return; const want = (selIds.has(r.id) ? .06 : 0) + (hoverId === r.id ? .025 : 0); r.mesh.position.y += (r.home.pos.y + want - r.mesh.position.y) * Math.min(1, dt * 14); });
-    tcard.position.y = TY + .32 + Math.sin(t * 1.6) * .012; tcard.rotation.y = Math.atan2(cam.position.x - tcard.position.x, cam.position.z - tcard.position.z);
+    tcard.position.y = TY + .32 + tcOff + Math.sin(t * 1.6) * .012; tcard.rotation.y = Math.atan2(cam.position.x - tcard.position.x, cam.position.z - tcard.position.z);
     { const hr = hoverId != null ? cards.get(hoverId) : null; if (hr) { glow.position.copy(hr.mesh.position).add(V(0, .02, 0)); glow.visible = true; } glowA += ((hr ? .35 : 0) - glowA) * Math.min(1, dt * 10); glow.material.opacity = glowA; if (glowA < .01 && !hr) glow.visible = false; }
     updateCamera(dt, t); renderer.render(scene, cam);
   }
