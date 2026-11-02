@@ -24,3 +24,9 @@ Note: the whole game state lives in the room (hands included) — fine for frien
 
 ## Running out of cards
 Players with no cards are skipped. When nobody else holds a card, the last play is turned over automatically (no one is forced to call): a lie → the player pulls the trigger; the truth → nobody pulls and a new round is dealt. A Devil in that play still makes everyone else pull.
+
+## Bot levels
+- **Easy (0)**: misjudges claims and sometimes throws random cards.
+- **Normal (1)**: plays by expected "shots" — Bayesian estimate of how likely the last claim is a lie (own hand, cards it played, hand sizes, claim size, caught-bluff history), every option scored by risk to itself vs. risk put on others using the real chamber positions (and the shared gun). Learns per opponent how often they call claims of 1/2/3 cards (`g.st`) and bluffs more against players who rarely call.
+- **Hard (2)**: like a careful human — hypergeometric model of the unseen table cards, weighs the real danger of the guns before calling, uses the Devil as a free lie / sweep, bluffs sparingly.
+- Normal and Hard never peek at hidden cards (tests scramble them and check the same move is chosen). In 2v2 duels Hard beats Normal ~85% and Normal beats Easy ~90%.

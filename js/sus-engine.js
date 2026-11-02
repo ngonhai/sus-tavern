@@ -67,6 +67,7 @@
     g.sidx = 0; g.phase = 'trigger'; g.lead = loser >= 0 ? loser : acc;
   }
 
+  const stOf = g => { const t = g.st || (g.st = {}); ['fz', 'cz', 'sz'].forEach(k => { if (!t[k]) t[k] = g.names.map(() => [0, 0, 0]); }); return t; };   // opponent statistics for the hard bot (older saved games get them lazily)
   // apply one action of player p. returns true if legal (and g mutated).
   function apply(g, p, a) {
     if (g.phase === 'over' || !a || p < 0 || p >= g.n || !g.alive[p]) return false;
@@ -76,6 +77,7 @@
       const cards = a.ids.map(id => g.hands[p].find(c => c.id === id)); g.hands[p] = g.hands[p].filter(c => !a.ids.includes(c.id));
       g.pile.push(...cards); g.last = { by: p, n: cards.length, cards };
       (g.plays = g.plays || []).push({ by: p, ids: a.ids.slice() });
+      stOf(g).sz[p][cards.length - 1]++;
       // next to act: next living player that still has cards. If nobody else has cards left, the next player must call.
       let nx = -1; for (let k = 1; k < g.n; k++) { const j = (p + k) % g.n; if (g.alive[j] && g.hands[j].length) { nx = j; break; } }
       g.forced = false; if (nx < 0) nx = nextAlive(g, p);
@@ -83,11 +85,12 @@
       g.log.push({ t: 'play', by: p, n: cards.length, r: g.round });
       // nobody else holds a card any more: nobody is forced to do anything, the last play is simply turned over (auto showdown)
       if (!g.alive.some((al, j) => al && j !== p && g.hands[j].length)) resolve(g, p, -1);
+      else if (nx !== p) stOf(g).fz[nx][cards.length - 1]++;                       // nx now has to decide: call or play on (used by the normal bot to learn who calls often)
       return true;
     }
     if (a.t === 'call') {
       if (!canCall(g, p)) { g.seq--; return false; }
-      resolve(g, p, p); return true;
+      stOf(g).cz[p][g.last.n - 1]++; resolve(g, p, p); return true;
     }
     if (a.t === 'pull') {
       if (g.phase !== 'trigger' || g.shooters[g.sidx] !== p) { g.seq--; return false; }
@@ -124,6 +127,60 @@
   }
   // bot skill (hard bots only call when they are nearly sure — thr — because a wrong call costs a shot; tuned by simulation): call = how eagerly it calls a suspicious claim, lie = how often it bluffs, noise = how badly it misjudges, sloppy = chance of playing random cards
   const LVL = [{ call: .5, lie: .08, noise: .5, sloppy: .25 }, { call: .85, lie: .25, noise: 0, sloppy: 0 }, { call: 1, lie: .03, noise: 0, sloppy: 0, thr: .85, devil: true }];
+
+  // ---- normal bot (level 1): expected-shots bot ----
+  // Plays by the numbers, never peeks: it only uses its own hand, the cards it played itself, public counts and the public history of the game.
+  //  * infer(): P(last claim is a lie) from a hypergeometric model of the unseen cards (+ how often that player has been caught bluffing)
+  //  * every decision (call / each way of playing) is scored by expected "shots": my death risk vs. the risk I put on the others, from where the bullets are
+  //  * it learns how often each opponent calls (g.st) and bluffs more against players who rarely call
+  const comb = (n, k) => { if (k < 0 || k > n) return 0; k = Math.min(k, n - k); let r = 1; for (let i = 1; i <= k; i++) r = r * (n - k + i) / i; return r; };
+  const hyper = (N, K, n, k) => comb(K, k) * comb(N - K, n - k) / comb(N, n);                  // P(exactly k matches in n cards drawn from N cards holding K matches)
+  const pAtLeast = (N, K, n, k) => { let s = 0; for (let i = k; i <= Math.min(n, K); i++) s += hyper(N, K, n, i); return Math.max(0, Math.min(1, s)); };
+  const pullCost = (g, j) => { const left = CH - gunOf(g, j).pos, r1 = left <= 1 ? 1 : 1 / left, r2 = left <= 2 ? 1 : 1 / (left - 1); return r1 + (1 - r1) * .3 * r2; };   // death chance now + a share of the chance of having to pull again
+  function lieRate(g, j) { let a = 0, c = 0; for (const l of g.log) if (l.t === 'call' && l.acc === j) { a++; if (!l.honest) c++; } return Math.max(.04, (c + 1.2) / (a + 5) - .08); }   // voluntary bluff rate (the lies they are forced into are subtracted roughly)
+  function roundSegs(g) { const segs = []; let off = 0; for (const l of g.log) if (l.t === 'play' && l.r === g.round) { segs.push({ by: l.by, cards: g.pile.slice(off, off + l.n) }); off += l.n; } return off === g.pile.length ? segs : null; }
+  function infer(g, p) {
+    const L = g.last, q = L.by, n = L.n, segs = roundSegs(g); if (!segs || !segs.length || segs[segs.length - 1].by !== q) return { q, n, pLie: suspicion(g, p), pD: 0 };
+    const isM = c => c.k === g.target || c.k === 'J', per = perKind(g), jk = g.opts.joker ? 2 : 0, dvN = g.opts.devil ? 1 : 0, h = g.hands[p];
+    let myPlayed = 0, myMatch = 0, myDev = 0; segs.forEach(s => { if (s.by === p) s.cards.forEach(c => { myPlayed++; if (isM(c)) myMatch++; if (c.k === 'D') myDev++; }); });
+    const M = Math.max(0, per + jk - h.filter(isM).length - myMatch), N = Math.max(1, per * 3 + jk + dvN - h.length - myPlayed), dens = M / N;
+    let E = 0, Em = 0; for (let i = 0; i < segs.length - 1; i++) { const s = segs[i]; if (s.by === p) continue; const m = s.cards.length, lr = lieRate(g, s.by); E += m; Em += m * ((1 - lr) + lr * dens * .5); }   // earlier claims by others: expected matches already gone
+    const M2 = Math.max(0, Math.round(M - Em)), N2 = Math.max(n, N - E), hb = g.hands[q].length + n;                                           // q's hand before the play, drawn from what is unseen
+    // Bayes over X = how many table cards q held: with a match q usually tells the truth (and plays 1..X cards), without one q must lie; the claim size n is evidence too
+    const lam = lieRate(g, q), sz = stOf(g).sz[q], wt = [2.5 + sz[0], 1.5 + sz[1], 1 + sz[2]], K = Math.min(M2, N2), H = Math.min(hb, N2);
+    const szp = (m, cap) => { if (m > cap) return 0; let t = 0; for (let i = 1; i <= Math.min(3, cap); i++) t += wt[i - 1]; return t ? wt[m - 1] / t : 0; };
+    let num = 0, den = 0;
+    for (let X = 0; X <= Math.min(H, K); X++) { const px = hyper(N2, K, H, X); if (!px) continue; const hon = X >= 1 ? 1 - lam : 0; num += px * (1 - hon) * szp(n, H - X); den += px * hon * szp(n, X); }
+    const pLie = Math.max(0, Math.min(.98, den + num > 0 ? num / (num + den) : 1));
+    const dvUnknown = dvN && !h.some(c => c.k === 'D') && !myDev, pD = dvUnknown ? Math.min(pLie, n / N2 * 1.6) : 0;
+    return { q, n, pLie, pD };
+  }
+  function pCall(g, j, n) { const st = stOf(g), pri = [.2, .38, .62][n - 1], f = st.fz[j][n - 1], c = st.cz[j][n - 1]; return Math.max(.03, Math.min(.95, ((c + pri * 3) / (f + 3)) * (1 + .04 * Math.min(8, g.pile.length)))); }   // how likely j is to call a claim of n cards: learned per size, with a generic prior
+  function botNormal(g, p) {
+    const h = g.hands[p], al = aliveList(g), A = al.length, w = 1 / Math.max(1, A - 1), me = pullCost(g, p), others = al.filter(j => j !== p), shr = g.opts.shared ? .4 : 1;
+    const isM = c => c.k === g.target || c.k === 'J', good = h.filter(isM), bad = h.filter(c => !isM(c) && c.k !== 'D'), dv = h.filter(c => c.k === 'D');
+    const sweep = ex => others.filter(j => j !== ex).reduce((s, j) => s + pullCost(g, j), 0) * w * shr;                    // everyone but the Devil's owner pulls
+    const opts = [];
+    if (canCall(g, p)) {
+      const I = infer(g, p), cq = pullCost(g, I.q), pHon = 1 - I.pLie, pLn = Math.max(0, I.pLie - I.pD);
+      opts.push({ ev: -.05 * me - pHon * me + pLn * w * cq + I.pD * (-me + sweep(I.q)), a: { t: 'call' } });
+    }
+    if (h.length) {
+      let nq = -1; for (let k = 1; k < g.n; k++) { const j = (p + k) % g.n; if (g.alive[j] && g.hands[j].length) { nq = j; break; } }
+      for (let x = 0; x <= Math.min(3, bad.length); x++) for (let y = 0; x + y <= 3 && y <= good.length; y++) for (let d = 0; d <= dv.length && x + y + d <= 3; d++) {
+        const n = x + y + d; if (n < 1) continue; const lie = x > 0 || d > 0, bl = bad.length - x; let ev;
+        if (nq < 0) ev = d ? sweep(-1) : lie ? -me : 0;                                                                     // nobody else holds cards: automatic showdown
+        else {
+          const pc = pCall(g, nq, n);
+          ev = (d ? pc * sweep(-1) : lie ? -pc * me : pc * w * pullCost(g, nq)) - (1 - pc) * bl * .04 * me;                  // bad cards still in hand are future risk
+        }
+        const ids = []; bad.slice(0, x).forEach(c => ids.push(c.id)); good.slice(0, y).forEach(c => ids.push(c.id)); if (d) ids.push(dv[0].id);
+        opts.push({ ev: ev + (rnd(g) - .5) * .02, a: { t: 'play', ids } });
+      }
+    }
+    if (!opts.length) return { t: 'call' };
+    return opts.reduce((b, o) => o.ev > b.ev ? o : b).a;
+  }
 
   // ---- hard bot (level 2) ----
   // It plays like a careful human: it only uses what a seated player can see (its own cards, the sizes of the hands, who put how many cards on the pile,
@@ -180,8 +237,9 @@
   }
   function bot(g, p) {
     if (g.phase === 'trigger') return { t: 'pull' };
-    if (g.opts.botLevel === 2) return botHard(g, p);
     const lv = Math.max(0, Math.min(2, g.opts.botLevel == null ? 1 : g.opts.botLevel)), P = LVL[lv];
+    if (lv === 2) return botHard(g, p);
+    if (lv === 1) return botNormal(g, p);
     const h = g.hands[p], good = h.filter(c => c.k === g.target || c.k === 'J'), bad = h.filter(c => !(c.k === g.target || c.k === 'J'));
     if (mustCall(g, p)) return { t: 'call' };
     if (canCall(g, p)) { let s = suspicion(g, p); if (P.noise) s = Math.max(0, Math.min(1, s + (rnd(g) - .5) * P.noise)); const r = rnd(g); if ((s >= 1 && (lv > 0 || r < .7)) || (P.thr != null ? s >= P.thr : r < s * P.call) || (!h.length)) return { t: 'call' }; }

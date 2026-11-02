@@ -62,4 +62,45 @@ for (let n = 2; n <= 5; n++) for (let s = 0; s < 40; s++) {
 { const g = Sus.newGame(['a', 'b', 'c', 'd'], { shared: true, devil: true }, 21); g.turn = 0; g.target = 'K'; g.hands[0] = [{ id: 901, k: 'D' }, { id: 902, k: 'K' }]; g.hands[1] = [{ id: 911, k: 'K' }]; g.hands[2] = [{ id: 921, k: 'K' }]; g.hands[3] = [{ id: 931, k: 'K' }];
   Sus.apply(g, 0, { t: 'play', ids: [901] }); Sus.apply(g, g.turn, { t: 'call' }); ok(g.shooters.length === 3, 'devil: 3 shooters'); const first = g.shooters[0]; g.gun[0].pos = 0; g.gun[0].bullet = 0;
   Sus.apply(g, first, { t: 'pull' }); ok(!g.alive[first] && g.phase === 'play' && g.alive.filter(Boolean).length === 3, 'shared devil sweep stops at the first death'); }
+// normal bot never peeks: scramble every card it cannot legitimately see (other hands, other players' pile cards) -> it must choose the exact same action
+{ let same = 0, tot = 0;
+  for (const devil of [false, true]) for (let n = 2; n <= 5; n++) for (let s = 0; s < 25; s++) {
+    const g = Sus.newGame(Array.from({ length: n }, (_, i) => 'P' + i), { devil, botLevel: 1 }, 3000 + s * 11 + n); let steps = 0;
+    while (g.phase !== 'over' && steps++ < 400) {
+      const p = Sus.actor(g);
+      if (g.phase === 'play') {
+        const a = JSON.parse(JSON.stringify(g)), kinds = devil ? ['A', 'K', 'Q', 'D'] : ['A', 'K', 'Q'], mine = new Set(); let off = 0;
+        a.log.forEach(l => { if (l.t === 'play' && l.r === a.round) { if (l.by === p) for (let i = 0; i < l.n; i++) mine.add(a.pile[off + i].id); off += l.n; } });
+        a.hands.forEach((h, j) => { if (j !== p) h.forEach(c => { c.k = kinds[(c.id * 7 + steps) % kinds.length]; }); });
+        a.pile.forEach(c => { if (!mine.has(c.id)) c.k = kinds[(c.id * 5 + steps) % kinds.length]; }); if (a.last) a.last.cards = a.last.cards.map(c => a.pile.find(x => x.id === c.id) || c);
+        const c2 = JSON.parse(JSON.stringify(g)), x = JSON.stringify(Sus.bot(g, p)), y = JSON.stringify(Sus.bot(a, p)); tot++; if (x === y) same++; else ok(false, 'normal bot peeked: ' + x + ' vs ' + y);
+        if (x !== JSON.stringify(Sus.bot(c2, p))) ok(false, 'not deterministic');
+      }
+      if (!Sus.apply(g, p, Sus.bot(g, p))) { ok(false, 'normal illegal'); break; }
+    }
+  }
+  ok(tot > 200 && same === tot, 'normal bot decisions depend only on what it can see (' + same + '/' + tot + ')'); }
+// old saved games without the stats object still work for the normal bot
+{ const g = Sus.newGame(['a', 'b', 'c'], { botLevel: 1, devil: true }, 31); delete g.st; let st = 0; while (g.phase !== 'over' && st++ < 3000) { const a = Sus.actor(g); if (!Sus.apply(g, a, Sus.bot(g, a))) { ok(false, 'legacy state illegal'); break; } } ok(g.phase === 'over', 'normal bot copes with a state that has no stats'); }
+// hard bot never peeks either
+{ let same = 0, tot = 0;
+  for (const devil of [false, true]) for (let n = 2; n <= 5; n++) for (let s = 0; s < 25; s++) {
+    const g = Sus.newGame(Array.from({ length: n }, (_, i) => 'P' + i), { devil, botLevel: 2 }, 3000 + s * 11 + n); let steps = 0;
+    while (g.phase !== 'over' && steps++ < 400) {
+      const p = Sus.actor(g);
+      if (g.phase === 'play') {
+        const a = JSON.parse(JSON.stringify(g)), kinds = devil ? ['A', 'K', 'Q', 'D'] : ['A', 'K', 'Q'], mine = new Set(); let off = 0;
+        a.log.forEach(l => { if (l.t === 'play' && l.r === a.round) { if (l.by === p) for (let i = 0; i < l.n; i++) mine.add(a.pile[off + i].id); off += l.n; } });
+        a.hands.forEach((h, j) => { if (j !== p) h.forEach(c => { c.k = kinds[(c.id * 7 + steps) % kinds.length]; }); });
+        a.pile.forEach(c => { if (!mine.has(c.id)) c.k = kinds[(c.id * 5 + steps) % kinds.length]; }); if (a.last) a.last.cards = a.last.cards.map(c => a.pile.find(x => x.id === c.id) || c);
+        const c2 = JSON.parse(JSON.stringify(g)), x = JSON.stringify(Sus.bot(g, p)), y = JSON.stringify(Sus.bot(a, p)); tot++; if (x === y) same++; else ok(false, 'hard bot peeked: ' + x + ' vs ' + y);
+        if (x !== JSON.stringify(Sus.bot(c2, p))) ok(false, 'not deterministic');
+      }
+      if (!Sus.apply(g, p, Sus.bot(g, p))) { ok(false, 'hard illegal'); break; }
+    }
+  }
+  ok(tot > 200 && same === tot, 'hard bot decisions depend only on what it can see (' + same + '/' + tot + ')'); }
+// duels: normal (expected-shots bot) must beat easy, hard must beat normal (cross-seat, fair share = 50%)
+{ function duel(hi, lo, G) { let w = 0; for (let i = 0; i < G; i++) { const seat = i % 2, g = Sus.newGame(['a', 'b', 'c', 'd'], { devil: true }, 15000 + i); let st = 0; while (g.phase !== 'over' && st++ < 3000) { const a = Sus.actor(g); g.opts.botLevel = a % 2 === seat ? hi : lo; Sus.apply(g, a, Sus.bot(g, a)); } if (g.winner % 2 === seat) w++; } return w; }
+  const n1 = duel(1, 0, 200), h1 = duel(2, 1, 200); console.log('normal vs easy (2v2):', n1, '/200 | hard vs normal (2v2):', h1, '/200 (fair = 100)'); ok(n1 > 130, 'normal beats easy'); ok(h1 > 130, 'hard beats normal'); }
 if (fails) { console.error(fails + ' failures'); process.exit(1); } else console.log('engine tests passed');
