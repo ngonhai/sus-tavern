@@ -78,7 +78,19 @@ const Art = (function () {
     if (k === 'A') { g.moveTo(cx - s * .62, cy + s); g.lineTo(cx, cy - s); g.lineTo(cx + s * .62, cy + s); g.moveTo(cx - s * .3, cy + s * .35); g.lineTo(cx + s * .3, cy + s * .35); g.stroke(); }
     else if (k === 'K') { g.moveTo(cx - s * .55, cy - s); g.lineTo(cx - s * .55, cy + s); g.moveTo(cx + s * .6, cy - s); g.lineTo(cx - s * .5, cy + s * .05); g.lineTo(cx + s * .65, cy + s); g.stroke(); }
     else if (k === 'Q') { g.ellipse(cx, cy - s * .08, s * .62, s * .85, 0, 0, 7); g.moveTo(cx + s * .1, cy + s * .35); g.lineTo(cx + s * .7, cy + s * 1.05); g.stroke(); }
-    else if (k === 'J') { for (let i = 0; i < 5; i++) { const a = -Math.PI / 2 + i * Math.PI * 2 / 5 * 2; g.lineTo(cx + Math.cos(a) * s, cy + Math.sin(a) * s); } g.closePath(); g.stroke(); }
+    else if (k === 'J') {                      // a jester: three-pointed cap with bells, grinning face, zigzag ruff
+      const C = KCOL.J, bell = (x, y) => { g.beginPath(); g.arc(x, y, s * .15, 0, 7); g.fill(); };
+      g.lineWidth = s * .15; g.beginPath(); g.moveTo(cx - s * .5, cy - s * .12);
+      g.quadraticCurveTo(cx - s * .95, cy - s * .15, cx - s * .98, cy - s * .78); g.quadraticCurveTo(cx - s * .55, cy - s * .62, cx - s * .2, cy - s * .5);
+      g.quadraticCurveTo(cx - s * .28, cy - s * 1.0, cx, cy - s * 1.08); g.quadraticCurveTo(cx + s * .28, cy - s * 1.0, cx + s * .2, cy - s * .5);
+      g.quadraticCurveTo(cx + s * .55, cy - s * .62, cx + s * .98, cy - s * .78); g.quadraticCurveTo(cx + s * .95, cy - s * .15, cx + s * .5, cy - s * .12); g.stroke();
+      bell(cx - s * .98, cy - s * .8); bell(cx, cy - s * 1.1); bell(cx + s * .98, cy - s * .8);
+      g.beginPath(); g.moveTo(cx - s * .55, cy - s * .08); g.lineTo(cx + s * .55, cy - s * .08); g.stroke();                       // brim
+      g.beginPath(); g.ellipse(cx, cy + s * .3, s * .48, s * .46, 0, 0, 7); g.stroke();                                          // face
+      g.beginPath(); g.arc(cx - s * .18, cy + s * .2, s * .05, 0, 7); g.arc(cx + s * .18, cy + s * .2, s * .05, 0, 7); g.fill();  // eyes
+      g.lineWidth = s * .1; g.beginPath(); g.arc(cx, cy + s * .34, s * .24, .15 * Math.PI, .85 * Math.PI); g.stroke();             // grin
+      g.lineWidth = s * .13; g.beginPath(); g.moveTo(cx - s * .7, cy + s * .98); for (let i = 1; i <= 6; i++) g.lineTo(cx - s * .7 + i * s * .233, cy + s * (i % 2 ? .72 : .98)); g.stroke();   // ruff
+    }
     else { g.moveTo(cx - s * .7, cy - s * .2); g.lineTo(cx - s * .55, cy - s * 1.05); g.lineTo(cx - s * .2, cy - s * .5); g.lineTo(cx + s * .2, cy - s * .5); g.lineTo(cx + s * .55, cy - s * 1.05); g.lineTo(cx + s * .7, cy - s * .2); g.lineTo(cx + s * .4, cy + s * .8); g.lineTo(cx, cy + s); g.lineTo(cx - s * .4, cy + s * .8); g.closePath(); g.stroke(); g.fillStyle = '#fff'; g.beginPath(); g.arc(cx - s * .26, cy, s * .1, 0, 7); g.arc(cx + s * .26, cy, s * .1, 0, 7); g.fill(); }
   }
   function scratchLayer(g, W, H, n) { g.globalCompositeOperation = 'destination-out'; for (let i = 0; i < n; i++) { const y = rr() * H, x = rr() * W, l = 20 + rr() * W * .5, a = (rr() - .5) * .18; g.lineWidth = .6 + rr() * 2.4; g.strokeStyle = 'rgba(0,0,0,' + (.4 + rr() * .6) + ')'; g.beginPath(); g.moveTo(x, y); g.lineTo(x + l, y + Math.sin(a) * l); g.stroke(); } g.globalCompositeOperation = 'source-over'; }

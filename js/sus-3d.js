@@ -17,6 +17,7 @@ const S3D = (function () {
   const SEAT = [];       // { phi, pos, dir, right, q }
   let n = 0, game = null, me = 0;
   const view = { mode: 'pov', seat: 0, parX: 0, parY: 0 }, camPos = V(0, 1.3, 1.2), camLook = V(0, .8, 0), cine = { dolly: 0, fov: 0, shake: 0, pitch: 0, roll: 0, k: 0, focus: V(0, 1, 0) };
+  let shared = false; const gi = s => shared ? 0 : s;   // shared revolver mode: a single gun (guns[0]) that slides to whoever has to shoot
   const players = [], cards = new Map(), guns = [], selIds = new Set(); let tcard, tcardTex, hoverId = null, glow, glowA = 0, lampSpot, flashLight, tableMesh, fxs = [];
   const cb = { pick: () => {}, hover: () => {} }; let hoverGun = -1;
 
@@ -70,7 +71,7 @@ const S3D = (function () {
     for (let ring = 0; ring < 2; ring++) for (let k = 0; k < 44; k++) { const a = k / 44 * Math.PI * 2, rr = 5.9, h = .22 + Math.random() * .16, b = cyl(.04, .05, h, 6, M(COL[(k * 3 + ring) % COL.length]), Math.sin(a) * rr, 1.55 + ring * .85 + h / 2, Math.cos(a) * rr, scene, false); b.rotation.y = a; }
     for (let ring = 0; ring < 2; ring++) { const sh = new THREE.Mesh(new THREE.TorusGeometry(5.9, .04, 4, 40), M('#7e4526')); sh.rotation.x = Math.PI / 2; sh.position.y = 1.53 + ring * .85; scene.add(sh); }
     // The tavern sign on the wall (use \n in a name for a second line): every game picks one of these (g.sign is random per room/game, so all players in a room see the same one). Add or edit names here.
-    const SIGNS = [['SUS TAVERN', '#ff8a6a'], ['CẨN TRỌNG BAR', '#ffd36a'], ['NO TRUST INN', '#8ee3d0'], ['LAST CALL', '#ff6a6a'], ['TRÊN ĐỜI CÓ 2 LOẠI NGƯỜI\nNÓI DỐI VÀ NÓI DỐI NHIỀU LẦN', '#c9a7ff'], ['DEAD MAN\'S TAB', '#ff9f5a'], ['IT\'S NÓI DỐI TIME', '#ffb547'], ['QUÁN SUS-PICIOUS', '#ff8a6a'], ['LIARS!!!', '#7fd1ff']];
+    const SIGNS = [['SUS TAVERN', '#ff8a6a'], ['CẨN TRỌNG BAR', '#ffd36a'], ['NO TRUST INN', '#8ee3d0'], ['LAST CALL', '#ff6a6a'], ['TRÊN ĐỜI CÓ 2 LOẠI\nNÓI DỐI VÀ NÓI DỐI NHIỀU LẦN', '#c9a7ff'], ['DEAD MAN\'S TAB', '#ff9f5a'], ['IT\'S NÓI DỐI TIME', '#ffb547'], ['QUÁN SUS-PICIOUS', '#ff8a6a'], ['LIARS!!!', '#7fd1ff']];
     const signMat = new THREE.MeshBasicMaterial({ map: LABEL(SIGNS[0][0], 2.6, .7, SIGNS[0][1]), transparent: true });
     const signMeshes = [];
     setSign = n => { const d = SIGNS[((n | 0) % SIGNS.length + SIGNS.length) % SIGNS.length], k = 1 + .75 * (d[0].split('\n').length - 1); if (signMat.map) signMat.map.dispose(); signMat.map = LABEL(d[0], 2.6, .7 * k, d[1]); signMat.needsUpdate = true; signMeshes.forEach(m => m.scale.y = k); };
@@ -227,7 +228,8 @@ const S3D = (function () {
     const flash = new THREE.Mesh(new THREE.SphereGeometry(.075, 12, 9), new THREE.MeshBasicMaterial({ color: 0xffd36a, transparent: true, opacity: .95, depthWrite: false })); flash.position.z = MUZ.z + .01; flash.position.y = MUZ.y; flash.visible = false; g.add(flash);
     g.userData = { seat: s, flash, held: null, kick: 0, rest: { pos: V(0, 0, 0), q: new THREE.Quaternion() } }; g.traverse(o => { o.userData.gunSeat = s; }); g.scale.setScalar(GS); return g;
   }
-  function gunRest(s) { const g = guns[s], u = g.userData; u.rest.pos.copy(sw(s, .3, TY + .066, .66)); u.rest.q.copy(poseQ(s, 0, Math.PI, 0).multiply(rotQ(V(0, 0, 1), -Math.PI / 2))); g.position.copy(u.rest.pos); g.quaternion.copy(u.rest.q); u.held = null; }
+  const restPose = s => ({ pos: sw(s, .3, TY + .066, .66), q: poseQ(s, 0, Math.PI, 0).multiply(rotQ(V(0, 0, 1), -Math.PI / 2)) });
+  function gunRest(s, center) { const g = guns[gi(s)], u = g.userData, r = restPose(s); if (center) { r.pos.set(.5, TY + .066, .12); r.q.premultiply(rotQ(UP, .8)); } u.rest.pos.copy(r.pos); u.rest.q.copy(r.q); g.position.copy(u.rest.pos); g.quaternion.copy(u.rest.q); u.held = null; }
   // where the wrist and the hand's orientation must be for a gun at (pos, q)
   function holdPose(pos, q) { const off = GRIPC.clone().multiplyScalar(GS).add(HOLD_OFF.clone().applyQuaternion(GTILT)).applyQuaternion(q); return { w: pos.clone().add(off), q: q.clone().multiply(GTILT).multiply(HOLD_Q) }; }
   const AIM = { def: [.82, .06, .5], dog: [.55, .06, .8], fox: [.76, .06, .62], hawk: [.72, .05, .68], goat: [.72, .06, .66] }, aray = new THREE.Raycaster(), _lm = new THREE.Matrix4();
@@ -240,7 +242,7 @@ const S3D = (function () {
     return { pos, q, dir: f };
   }
   function placeGun(s) {
-    const g = guns[s], u = g.userData, h = u.held; if (!h) return; const ap = h.frozen || aimPose(s), k = eio(clamp(h.k, 0, 1)), arc = Math.sin(Math.PI * k), S = SEAT[s];
+    const g = guns[gi(s)], u = g.userData, h = u.held; if (!h) return; const ap = h.frozen || aimPose(s), k = eio(clamp(h.k, 0, 1)), arc = Math.sin(Math.PI * k), S = SEAT[s];
     g.position.lerpVectors(u.rest.pos, ap.pos, k).addScaledVector(S.right, arc * .1).addScaledVector(UP, arc * .12); g.quaternion.slerpQuaternions(u.rest.q, ap.q, k);
     if (h.kick) { g.position.addScaledVector(ap.dir, -h.kick * .05); g.quaternion.multiply(rotQ(V(1, 0, 0), -h.kick * .4)); }
     const hp = holdPose(g.position, g.quaternion); h.hand.pos.copy(hp.w); h.hand.lockQ = hp.q;
@@ -271,7 +273,9 @@ const S3D = (function () {
     if (!ok) return; game = o.g; me = o.me; layout(o.g.n); setSign(o.g.sign);
     players.forEach(p => { if (p) { scene.remove(p.root); p.arms.forEach(a => scene.remove(a.root)); } }); players.length = 0; guns.forEach(g => scene.remove(g)); guns.length = 0; cards.forEach(r => scene.remove(r.mesh)); cards.clear(); fxs.forEach(f => scene.remove(f.m)); fxs = []; tws.length = 0;
     const COLS = ['#ff6a4d', '#5eead4', '#ffb547', '#b39bff', '#6cc4f5'];
-    for (let i = 0; i < o.g.n; i++) { players.push(makePerson(i, o.g.chars[i], COLS[i])); const gn = makeGun(i); scene.add(gn); guns.push(gn); gunRest(i); }
+    shared = !!(o.g.opts && o.g.opts.shared);
+    for (let i = 0; i < o.g.n; i++) { players.push(makePerson(i, o.g.chars[i], COLS[i])); if (!shared) { const gn = makeGun(i); scene.add(gn); guns.push(gn); gunRest(i); } }
+    if (shared) { const gn = makeGun(0); scene.add(gn); guns.push(gn); gunRest(0, true); }
     cine.dolly = cine.fov = cine.shake = cine.pitch = cine.roll = cine.k = 0; document.body.classList.remove('cine'); camPos.copy(camTarget().pos); setView(o.view);
   }
   function sync(g, opt) {
@@ -318,18 +322,19 @@ const S3D = (function () {
   function focusOn(pt, k, fov, dolly) { cine.focus.copy(pt); cineTo('k', k, 500); cineTo('fov', -fov, 600); cineTo('dolly', dolly || 0, 600); document.body.classList.add('cine'); }
   function unfocus() { cineTo('k', 0, 700); cineTo('fov', 0, 700); cineTo('dolly', 0, 700); document.body.classList.remove('cine'); }
   async function pullStart(p, beats) {
-    if (!ok || !players[p]) return; const P = players[p], arm = P.arms[0], g = guns[p], u = g.userData, head = () => P.head.getWorldPosition(V(0, 0, 0));
+    if (!ok || !players[p]) return; const P = players[p], arm = P.arms[0], g = guns[gi(p)], u = g.userData, head = () => P.head.getWorldPosition(V(0, 0, 0));
+    if (shared) { const t = restPose(p), a0 = g.position.clone(), q0 = g.quaternion.clone(); if (a0.distanceTo(t.pos) > .05) { Snd.play('card'); await tween(560, e => { g.position.lerpVectors(a0, t.pos, e); g.position.y += Math.sin(Math.PI * e) * .06; g.quaternion.slerpQuaternions(q0, t.q, e); }, eio); } gunRest(p); }
     // reach over the gun lying on the table, lower the hand onto the grip, close the fingers
     const hp = holdPose(u.rest.pos, u.rest.q); arm.lockQ = hp.q; arm.lockW = 0; arm.gun = true;
     await Promise.all([moveHand(arm, hp.w.clone().add(V(0, .15, 0)), 380), tween(380, e => { arm.lockW = e; }, lin)]);
     await moveHand(arm, hp.w, 140); await gripTo(arm, 1, 150);
-    u.held = { hand: arm, k: 0, kick: 0, frozen: null };
+    u.held = { hand: arm, k: 0, kick: 0, frozen: null }; u.by = p;
     focusOn(head().add(V(0, .05, 0)), view.mode === 'pov' && view.seat === p ? .35 : .6, 12, .25); Snd.play('select');
     await tween(760, e => { u.held.k = e; }, lin);                    // swing the gun up; the muzzle ends on the head's surface
     for (let i = 0; i < beats; i++) { Snd.play('beat'); cine.shake = .25 + i * .1; cineTo('shake', 0, 420); await wait(520); }
   }
   async function pullEnd(p, dead) {
-    if (!ok || !players[p]) return; const P = players[p], g = guns[p], u = g.userData, h = u.held; if (!h) { unfocus(); return; } const arm = h.hand;
+    if (!ok || !players[p]) return; const P = players[p], g = guns[gi(p)], u = g.userData, h = u.held; if (!h) { unfocus(); return; } const arm = h.hand;
     if (dead) {
       h.frozen = aimPose(p); u.flash.visible = true; flashLight.position.copy(g.position).addScaledVector(h.frozen.dir, .25); flashLight.intensity = 60; cine.shake = 1.4; cineTo('shake', 0, 700); P.busy = true;
       tween(120, e => { h.kick = e; }, eo).then(() => tween(300, e => { h.kick = 1 - e; }, eo)); tween(160, e => { flashLight.intensity = 60 * (1 - e); }, lin).then(() => { u.flash.visible = false; flashLight.intensity = 0; });
@@ -409,7 +414,7 @@ const S3D = (function () {
       p.head.rotation.x = Math.sin(t * .7 + s) * .02; const lk = p.lookTo != null && SEAT[p.lookTo] ? sw(p.lookTo, 0, 1.4, 0) : (game && game.alive && n > 1) ? (SEAT[(s + 1) % n] ? sw((s + 1) % n, 0, 1.4, 0) : V(0, 1.4, 0)) : V(0, 1.4, 0);
       if (!p.dead) { const lp = p.head.getWorldPosition(V(0, 0, 0)), dir = lk.clone().sub(lp).applyAxisAngle(UP, SEAT[s].phi); p.head.rotation.y += (clamp(Math.atan2(-dir.x, -dir.z) * .5, -.7, .7) - p.head.rotation.y) * .04; }
     });
-    guns.forEach((g, s) => { if (g.userData.held) placeGun(s); });
+    guns.forEach(g => { if (g.userData.held) placeGun(g.userData.by); });
     players.forEach(p => { if (p) p.arms.forEach((a, i) => { if (a.pos.equals(a.rest) && !a.lockQ) a.pos.y = a.rest.y + Math.sin(t * 1.2 + i) * .002; solveArm(a); }); });
     // hovered / selected cards lift smoothly; the target card faces the camera
     cards.forEach(r => { if (r.busy || r.owner !== viewSeat() || r.inPile || !r.home) return; const want = (selIds.has(r.id) ? .06 : 0) + (hoverId === r.id ? .025 : 0); r.mesh.position.y += (r.home.pos.y + want - r.mesh.position.y) * Math.min(1, dt * 14); });

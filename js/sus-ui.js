@@ -35,10 +35,12 @@
   function rulesHTML(s, edit, offline) {
     let h = '<div class="rule-row"><div><b>' + t('rDevil') + '</b><p>' + t('rDevilD') + '</p></div>' + seg('devil', [[0, t('offS')], [1, t('on')]], s.devil ? 1 : 0, edit) + '</div>';
     if (offline) h += '<div class="rule-row"><div><b>' + t('rBots') + '</b><p>' + t('rBotsD') + '</p></div>' + seg('bots', [[1, '1'], [2, '2'], [3, '3'], [4, '4']], s.bots, edit) + '</div>';
+    h += '<div class="rule-row"><div><b>' + t('rShared') + '</b><p>' + t('rSharedD') + '</p></div>' + seg('shared', [[0, t('offS')], [1, t('on')]], s.shared ? 1 : 0, edit) + '</div>';
+    h += '<div class="rule-row"><div><b>' + t('rJoker') + '</b><p>' + t('rJokerD') + '</p></div>' + seg('joker', [[0, t('offS')], [1, t('on')]], s.joker ? 1 : 0, edit) + '</div>';
     h += '<div class="rule-row"><div><b>' + t('rBotLv') + '</b><p>' + t('rBotLvD') + '</p></div>' + seg('botLevel', [[0, t('lvEasy')], [1, t('lvNormal')], [2, t('lvHard')]], s.botLevel, edit) + '</div>';
     return h;
   }
-  function wireRules(root, apply) { root.querySelectorAll('.seg-btn').forEach(b => { b.onclick = () => { if (b.disabled) return; Snd.play('click'); let v = b.dataset.v; v = b.dataset.k === 'devil' ? v === '1' : +v; apply(b.dataset.k, v); }; }); }
+  function wireRules(root, apply) { root.querySelectorAll('.seg-btn').forEach(b => { b.onclick = () => { if (b.disabled) return; Snd.play('click'); let v = b.dataset.v; v = ['devil', 'joker', 'shared'].includes(b.dataset.k) ? v === '1' : +v; apply(b.dataset.k, v); }; }); }
   function offRules() { $('off-rules').innerHTML = rulesHTML(U.settings, true, true); wireRules($('off-rules'), (k, v) => { U.settings[k] = v; U.settings = Sus.normSettings(U.settings); offRules(); }); }
 
   // ---------------------------------------------------------------- lobby / waiting ----
@@ -95,12 +97,12 @@
   // ---------------------------------------------------------------- rendering ----
   const backImg = n => { let h = ''; for (let i = 0; i < Math.min(n, 5); i++) h += '<i></i>'; return h; };
   function seatHTML(g, i, pov) {
-    const n = g.n, rel = (i - pov + n) % n, a = (90 + rel * 360 / n) * Math.PI / 180, x = 50 + 42 * Math.cos(a), y = 52 + 36 * Math.sin(a), alive = g.alive[i], gn = g.gun[i];
+    const n = g.n, rel = (i - pov + n) % n, a = (90 + rel * 360 / n) * Math.PI / 180, x = 50 + 42 * Math.cos(a), y = 52 + 36 * Math.sin(a), alive = g.alive[i], gn = Sus.gunOf(g, i), sh = !!g.opts.shared;
     let ch = ''; for (let k = 0; k < Sus.CH; k++) ch += '<i class="' + (k < gn.pos ? 'used' : '') + (!alive && k === gn.pos ? ' dead' : '') + '"></i>';
     const ex = !alive ? 'dead' : (U.expr[i] || 'neutral');
     return '<div class="seat2d' + (g.turn === i && g.phase === 'play' || (g.phase === 'trigger' && g.shooters[g.sidx] === i) ? ' turn' : '') + (alive ? '' : ' dead') + (i === U.me && !U.spec ? ' me' : '') + '" data-i="' + i + '" style="left:' + x + '%;top:' + y + '%;--sc:' + SEATCOL[i] + '">' +
       '<div class="say" id="say-' + i + '"></div><div class="av">' + Art.avatar(g.chars[i], ex) + '</div><div class="nm">' + esc(g.names[i]) + (i === U.me && !U.spec ? ' <span class="tag you">' + t('you') + '</span>' : '') + '</div>' +
-      '<div class="cards">' + (alive ? backImg(g.hands[i].length) + '<b>' + g.hands[i].length + '</b>' : '<b>☠</b>') + '</div><div class="chambers" title="' + t('chambers', { a: Math.min(gn.pos, 6) }) + '">' + ch + '</div></div>';
+      '<div class="cards">' + (alive ? backImg(g.hands[i].length) + '<b>' + g.hands[i].length + '</b>' : '<b>☠</b>') + '</div>' + (sh ? '' : '<div class="chambers" title="' + t('chambers', { a: Math.min(gn.pos, 6) }) + '">' + ch + '</div>') + '</div>';
   }
   const curl = k => (U.curls = U.curls || {})[k] || (U.curls[k] = Art.cardURL(k));
   function renderCenter(g) {
@@ -115,6 +117,7 @@
     const w = i => '<b>' + esc(g.names[i]) + '</b>';
     return g.log.slice(-60).reverse().map(l => {
       if (l.t === 'play') return '<div class="log-line">' + w(l.by) + ' → ' + l.n + '</div>';
+      if (l.t === 'call' && l.auto) return '<div class="log-line ' + (l.devil ? 'bad' : 'sys') + '">' + t('autoReveal', { n: w(l.acc) }) + ' ' + (l.devil ? '😈' : l.honest ? '✔' : '✘') + '</div>';
       if (l.t === 'call') return '<div class="log-line ' + (l.devil ? 'bad' : 'sys') + '">' + t('calls', { n: esc(g.names[l.by]) }).replace(esc(g.names[l.by]), w(l.by)) + ' ' + (l.devil ? '😈' : l.honest ? '✔' : '✘') + '</div>';
       return '<div class="log-line ' + (l.dead ? 'bad' : 'good') + '">' + (l.dead ? '☠ ' : '· ') + w(l.p) + '</div>';
     }).join('');
@@ -142,13 +145,13 @@
     $('seats').innerHTML = g.names.map((_, i) => seatHTML(g, i, pov)).join(''); renderCenter(g); renderHand(g);
     $('cam-bar').style.display = U.spec ? 'flex' : 'none'; if (U.spec) { $('cam-bar').innerHTML = '<button type="button" data-cam="side" class="' + (U.cam === 'side' ? 'on' : '') + '">' + t('camSide') + '</button>' + g.names.map((n, i) => '<button type="button" data-cam="' + i + '" class="' + (U.cam !== 'side' && U.camSeat === i ? 'on' : '') + '">' + esc(n) + '</button>').join(''); }
     $('game-room-code-label').textContent = Net.mode() === 'online' ? Net.code() + (U.spec ? ' · ' + t('spec') : (Net.specCount() ? ' · 👁' + Net.specCount() : '')) : ''; $('game-room-code-label').style.display = Net.mode() === 'online' ? '' : 'none';
-    $('round-chip').textContent = t('round', { n: g.round }) + ' · ' + t('cardShort')[g.target]; $('log-panel').innerHTML = logHTML(g);
+    $('round-chip').textContent = t('round', { n: g.round }) + ' · ' + t('cardShort')[g.target]; { const sg = $('sg-chip'); if (g.opts.shared) { const gn = g.gun[0]; let d = ''; for (let k = 0; k < Sus.CH; k++) d += '<i class="' + (k < gn.pos ? 'used' : '') + '"></i>'; sg.innerHTML = '🔫 ' + t('sharedChip') + ' <span class="sg-ch">' + d + '</span>'; sg.style.display = ''; sg.onmouseenter = e => { const r = sg.getBoundingClientRect(); showGun(0, r.left, r.bottom + 40); }; sg.onmouseleave = () => hideGun(); sg.onclick = () => { const r = sg.getBoundingClientRect(); showGun(0, r.left, r.bottom + 40, true); }; } else sg.style.display = 'none'; } $('log-panel').innerHTML = logHTML(g);
     if (U.d3) { S3().setView(U.spec && U.cam === 'side' ? 'side' : U.me); S3().sync(g, { me: U.me }); }
     renderControls(g); tension(g);
   }
   function tension(g) {
-    let T = .15; if (g.phase === 'trigger') { const s = g.shooters[g.sidx]; T = .4 + (g.gun[s].pos / 6) * .6; } else { const alive = g.alive.filter(Boolean).length; T = .15 + Math.max(0, 4 - alive) * .12 + g.gun.reduce((a, x, i) => a + (g.alive[i] ? x.pos : 0), 0) / (6 * alive) * .35; }
-    Snd.setTension(T); document.body.classList.toggle('tense', g.phase === 'trigger' && g.gun[g.shooters[g.sidx]].pos >= 3);
+    let T = .15; if (g.phase === 'trigger') { const s = g.shooters[g.sidx]; T = .4 + (Sus.gunOf(g, s).pos / 6) * .6; } else { const alive = g.alive.filter(Boolean).length; T = .15 + Math.max(0, 4 - alive) * .12 + g.gun.reduce((a, x, i) => a + (g.alive[i] ? x.pos : 0), 0) / (6 * alive) * .35; }
+    Snd.setTension(T); document.body.classList.toggle('tense', g.phase === 'trigger' && Sus.gunOf(g, g.shooters[g.sidx]).pos >= 3);
   }
 
   // ---------------------------------------------------------------- event player ----
@@ -182,14 +185,16 @@
         if (U.d3) await S3().playCards(e.by, e.ids, e.n); else await flyCards(e.by, e.n); const c = $('center'); if (c) { const cl = c.querySelector('.claim-big'); if (cl) cl.textContent = U.claim; } await sleep(260); break;
       }
       case 'call': {
+        if (e.auto) { say(t('autoReveal', { n: nm(e.acc) }), 'warn'); setExpr(e.acc, 'scared', 2000); await sleep(900); }
+        else {
         Snd.play('liar'); Snd.shout(VOICE[g.chars[e.by]] || 1); say(t('calls', { n: nm(e.by) }), 'bad'); bubble(e.by, t('liar'), 1800); setExpr(e.by, 'smug', 1500); setExpr(e.acc, 'scared', 2600); flashScreen('#ff4d6d'); shake();
-        if (U.d3) await S3().shout(e.by, e.acc); else await sleep(1100);
+        if (U.d3) await S3().shout(e.by, e.acc); else await sleep(1100); }
         say(t('reveal', { n: nm(e.acc) }), 'warn'); Snd.play('flip');
         const row = '<div class="reveal-row">' + e.cards.map(c => '<img src="' + curl(c.k) + '" alt="' + c.k + '">').join('') + '</div>';
         if (!U.d3) { $('center').innerHTML = '<div class="claim-big">' + esc(t('reveal', { n: g.names[e.acc] })) + '</div>' + row; }
         if (U.d3) await S3().reveal(e.acc, e.cards); else await sleep(1500);
         if (e.devil) { Snd.play('devil'); say(t('devilT', { n: nm(e.acc) }), 'bad'); flashScreen('#7a0a22'); shake(); setExpr(e.acc, 'hurt', 1800); await sleep(1500); }
-        else { say(e.honest ? tr('honestT', { n: nm(e.acc), m: nm(e.loser) }) : tr('liarT', { n: nm(e.acc) }), e.honest ? 'good' : 'bad'); setExpr(e.acc, e.honest ? 'smug' : 'hurt', 1600); if (e.honest) setExpr(e.by, 'scared', 1600); await sleep(1300); }
+        else { say(e.honest ? (e.auto ? t('autoSafe', { n: nm(e.acc) }) : tr('honestT', { n: nm(e.acc), m: nm(e.loser) })) : tr('liarT', { n: nm(e.acc) }), e.honest ? 'good' : 'bad'); setExpr(e.acc, e.honest ? 'smug' : 'hurt', 1600); if (e.honest && !e.auto) setExpr(e.by, 'scared', 1600); await sleep(e.auto && e.honest ? 1700 : 1300); }
         break;
       }
       case 'pull': {
@@ -198,6 +203,7 @@
         if (e.dead) {
           Snd.play('live'); Snd.duck(1600); flashScreen('#ff4d6d'); shake(); say(tr('bang'), 'bad', tr('dead', { n: nm(e.p) })); setExpr(e.p, 'dead'); Fx.blood(seatEl(e.p)); setTimeout(() => Snd.play('hurt'), 140); floatAt(e.p, '☠', '#ff4d6d');
           if (U.d3) await S3().pullEnd(e.p, true); else await sleep(1500);
+          if (e.reload) say(t('reloaded'), 'warn');
         } else {
           Snd.play('blank'); say(tr('click'), 'good', tr('safe', { n: nm(e.p), a: e.pos + 1 })); setExpr(e.p, 'laugh', 1400); Fx.smoke(seatEl(e.p));
           if (U.d3) await S3().pullEnd(e.p, false); else await sleep(1000);
@@ -224,7 +230,7 @@
     if (p.type === 'card') toggleCard(p.id);
     else if (p.type === 'table') { const now = Date.now(); if (now - (U.lastTable || 0) < 450) { U.lastTable = 0; doSlam(); } else U.lastTable = now; }
     else if (p.type === 'player') { if (p.seat !== U.me) doPoint(p.seat); }
-    else if (p.type === 'gun') { if (p.touch) { showGun(p.p, p.x, p.y, true); } else if (p.p === U.me) doPull(); }
+    else if (p.type === 'gun') { if (p.touch) { showGun(p.p, p.x, p.y, true); } else if (p.p === U.me || (U.view && U.view.opts.shared)) doPull(); }
   }
   const VOICE = { pig: 1.15, fox: 1.25, dog: .95, goat: 1.35, octo: .8, penguin: 1.2, hawk: 1.1, turtle: .7 };
   async function doSlam() { if (!U.d3 || U.busy || U.pending || U.spec) return; const ok = await S3().slam(U.me); if (ok) Net.emote('slam'); }
@@ -255,10 +261,10 @@
 
   // ---- revolver info: hover the gun (or its seat chip); tap on touch screens ----
   function showGun(p, x, y, sticky) {
-    const g = U.view; if (!g || p < 0 || p >= g.n || U.spec || p !== U.me) return; /* own revolver only */ const gn = g.gun[p], rem = Math.max(0, Sus.CH - gn.pos), risk = g.alive[p] ? Math.round(100 / Math.max(1, rem)) : 0; let d = '';
+    const g = U.view; if (!g || p < 0 || p >= g.n || (!g.opts.shared && (U.spec || p !== U.me))) return; /* own revolver only (the shared one is public) */ const gn = Sus.gunOf(g, p), rem = Math.max(0, Sus.CH - gn.pos), risk = g.alive[p] ? Math.round(100 / Math.max(1, rem)) : 0; let d = '';
     for (let k = 0; k < Sus.CH; k++) d += '<i class="' + (k < gn.pos ? 'used' : '') + '"></i>';
-    const canPull = sticky && !U.spec && p === U.me && g.phase === 'trigger' && g.shooters[g.sidx] === U.me;
-    const el = $('gunpanel'); el.innerHTML = '<b>' + esc(t('gunT', { n: g.names[p] })) + '</b><div class="gp-ch">' + d + '</div><div>' + t('gunL', { r: rem }) + '</div><div>' + t('gunUsed', { a: gn.pos }) + '</div><div class="gp-risk">' + t('gunRisk', { p: risk }) + '</div>' + (canPull ? '<button type="button" class="btn btn-pull" id="gp-pull">' + t('gunPull') + '</button>' : '') + (sticky ? '<button type="button" class="btn btn-secondary" id="gp-close">' + t('gunClose') + '</button>' : '');
+    const canPull = sticky && !U.spec && (g.opts.shared || p === U.me) && g.phase === 'trigger' && g.shooters[g.sidx] === U.me;
+    const el = $('gunpanel'); el.innerHTML = '<b>' + esc((g.opts.shared ? t('gunShared') : t('gunT', { n: g.names[p] }))) + '</b><div class="gp-ch">' + d + '</div><div>' + t('gunL', { r: rem }) + '</div><div>' + t('gunUsed', { a: gn.pos }) + '</div><div class="gp-risk">' + t('gunRisk', { p: risk }) + '</div>' + (canPull ? '<button type="button" class="btn btn-pull" id="gp-pull">' + t('gunPull') + '</button>' : '') + (sticky ? '<button type="button" class="btn btn-secondary" id="gp-close">' + t('gunClose') + '</button>' : '');
     el.classList.add('on'); U.gunSticky = !!sticky; const w = 190, h = el.offsetHeight || 120; el.style.left = clampN((x == null ? innerWidth / 2 : x) + 18, 6, innerWidth - w - 6) + 'px'; el.style.top = clampN((y == null ? innerHeight / 2 : y) - h / 2, 56, innerHeight - h - 6) + 'px';
     const pb = $('gp-pull'); if (pb) pb.onclick = () => { hideGun(true); doPull(); }; const cb = $('gp-close'); if (cb) cb.onclick = () => hideGun(true);
   }
@@ -272,8 +278,8 @@
     $('btn-join-room').onclick = async () => { const n = needName(); if (!n) return; const code = $('input-room-code').value.trim(); if (code.length < 4) return; const r = await Net.joinOnline(code, n, U.myChar).catch(() => ({ ok: false, reason: 'noRoom' })); if (!r.ok) toast(tr('noRoom')); else if (r.spectator) toast(t('youAreSpec')); };
     $('btn-start-game').onclick = () => { Snd.unlock(); Net.startOnline(); }; $('btn-leave-waiting').onclick = leaveToLobby; $('btn-leave-game').onclick = leaveToLobby;
     $('room-code-box').onclick = () => { const u = location.origin + location.pathname + '?room=' + Net.code(); (navigator.clipboard ? navigator.clipboard.writeText(u) : Promise.reject()).then(() => toast(t('copied'))).catch(() => {}); };
-    $('seats').addEventListener('mouseover', e => { const el = e.target.closest('.seat2d'); if (!el || !U.view || e.pointerType === 'touch' || +el.dataset.i !== U.me) return; const r = el.getBoundingClientRect(); showGun(+el.dataset.i, r.right, r.top + r.height / 2); });
-    $('seats').addEventListener('mouseleave', () => hideGun()); $('seats').addEventListener('click', e => { const el = e.target.closest('.seat2d'); if (!el || !U.view || +el.dataset.i !== U.me) return; const r = el.getBoundingClientRect(); showGun(+el.dataset.i, r.right, r.top + r.height / 2, true); });
+    $('seats').addEventListener('mouseover', e => { const el = e.target.closest('.seat2d'); if (!el || !U.view || e.pointerType === 'touch' || U.view.opts.shared || +el.dataset.i !== U.me) return; const r = el.getBoundingClientRect(); showGun(+el.dataset.i, r.right, r.top + r.height / 2); });
+    $('seats').addEventListener('mouseleave', () => hideGun()); $('seats').addEventListener('click', e => { const el = e.target.closest('.seat2d'); if (!el || !U.view || U.view.opts.shared || +el.dataset.i !== U.me) return; const r = el.getBoundingClientRect(); showGun(+el.dataset.i, r.right, r.top + r.height / 2, true); });
     document.addEventListener('pointerdown', e => { if (U.gunSticky && !e.target.closest('#gunpanel') && !e.target.closest('.seat2d')) hideGun(true); });
     $('btn-rules').onclick = helpModal; $('btn-play').onclick = doPlay; $('btn-liar').onclick = doCall; $('btn-pull').onclick = doPull;
     $('hand').onclick = e => { const c = e.target.closest('.card'); if (c) toggleCard(+c.dataset.id); };

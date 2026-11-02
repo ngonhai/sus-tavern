@@ -166,3 +166,5 @@ body.mode3d .seat2d{ width:215px; } body.mode3d .seat2d .cards i{ display:none; 
 
 .flycard{ position:fixed; z-index:78; width:36px; height:50px; background:var(--back) center/cover; border-radius:3px; box-shadow:0 4px 8px rgba(0,0,0,.45); pointer-events:none; }
 .banner{ top:46%; }
+
+.sg-ch{ display:inline-flex; gap:3px; vertical-align:middle; margin-left:4px; } .sg-ch i{ width:9px; height:9px; border-radius:50%; background:#e0b04a; border:1px solid #7a5a14; } .sg-ch i.used{ background:#25788a; border-color:#16515f; } #sg-chip{ cursor:pointer; }

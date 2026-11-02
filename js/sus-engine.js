@@ -1,5 +1,5 @@
 // sus-engine.js — pure rules of Sus Tavern (a Liar's Bar style bluffing game). No DOM. Seeded RNG lives in the state (g.rs) so the state is plain JSON.
-// Deck: Ace / King / Queen x K each + 2 Jokers (wild) [+ 1 Devil when enabled]. Every round one type is "the table card".
+// Deck: Ace / King / Queen x K each [+ 2 Jokers (wild) when enabled] [+ 1 Devil when enabled]. Every round one type is "the table card".
 // On your turn play 1-3 face-down cards claiming they are the table card, OR call the previous player a liar.
 // Call: reveal the last cards. All table-card/Joker => the caller was wrong and pulls the trigger; otherwise the liar pulls it.
 // Devil: if a revealed set contains a Devil, EVERY living player pulls the trigger one after another (starting with the accused).
@@ -7,8 +7,8 @@
 (function (root) {
   'use strict';
   const CHARS = ['pig', 'fox', 'dog', 'goat', 'octo', 'penguin', 'hawk', 'turtle'], KINDS = ['A', 'K', 'Q'], MAXP = 5, CH = 6, HAND = 5;
-  const DEFAULTS = { devil: false, bots: 3, botLevel: 1 };   // botLevel: 0 easy, 1 normal, 2 hard
-  function normSettings(s) { s = Object.assign({}, DEFAULTS, s || {}); s.devil = !!s.devil; s.bots = Math.max(1, Math.min(MAXP - 1, Math.round(+s.bots || 3))); s.botLevel = Math.max(0, Math.min(2, Math.round(+s.botLevel == null || isNaN(+s.botLevel) ? 1 : +s.botLevel))); return s; }
+  const DEFAULTS = { devil: false, joker: false, shared: false, bots: 3, botLevel: 1 };   // joker: the 2 wild star cards (off by default); shared: ONE revolver for the whole table   // botLevel: 0 easy, 1 normal, 2 hard
+  function normSettings(s) { s = Object.assign({}, DEFAULTS, s || {}); s.devil = !!s.devil; s.joker = !!s.joker; s.shared = !!s.shared; s.bots = Math.max(1, Math.min(MAXP - 1, Math.round(+s.bots || 3))); s.botLevel = Math.max(0, Math.min(2, Math.round(+s.botLevel == null || isNaN(+s.botLevel) ? 1 : +s.botLevel))); return s; }
 
   // mulberry32, state kept in g.rs
   function rnd(g) { let a = (g.rs = (g.rs + 0x6D2B79F5) >>> 0); a = Math.imul(a ^ (a >>> 15), a | 1); a ^= a + Math.imul(a ^ (a >>> 7), a | 61); return ((a ^ (a >>> 14)) >>> 0) / 4294967296; }
@@ -24,13 +24,15 @@
       gun: [], hands: [], pile: [], last: null, target: 'A', turn: 0, forced: false, phase: 'play', shooters: [], sidx: 0, round: 0, lead: 0, ev: [], log: [], winner: null, nid: 1, shots: names.map(() => 0), seen: [] };
     const used = new Set((picks || []).filter(c => c && CHARS.includes(c))), free = shuffle(g, CHARS.filter(c => !used.has(c)));
     g.chars = names.map((_, i) => { const c = picks && picks[i]; return c && CHARS.includes(c) ? c : free.shift(); });
-    for (let i = 0; i < n; i++) g.gun.push({ pos: 0, bullet: ri(g, CH) });
+    for (let i = 0; i < (opts.shared ? 1 : n); i++) g.gun.push({ pos: 0, bullet: ri(g, CH) });   // shared mode: a single revolver g.gun[0]
     g.sign = Math.floor(Math.random() * 1000);                       // picks the tavern sign on the wall (3D); shared by everyone in the room because it lives in the game state
     g.lead = ri(g, n); startRound(g); return g;
   }
+  // cards per kind: with the 2 Jokers 6 (8 for 5 players); without them a little more so that everyone can still be dealt 5 cards
+  const perKind = g => g.opts.joker ? (g.n >= 5 ? 8 : 6) : Math.max(6, Math.ceil(g.n * HAND / 3));
   function deckFor(g) {
-    const per = g.n >= 5 ? 8 : 6, d = []; KINDS.forEach(k => { for (let i = 0; i < per; i++) d.push({ id: g.nid++, k }); });
-    d.push({ id: g.nid++, k: 'J' }, { id: g.nid++, k: 'J' }); if (g.opts.devil) d.push({ id: g.nid++, k: 'D' });
+    const per = perKind(g), d = []; KINDS.forEach(k => { for (let i = 0; i < per; i++) d.push({ id: g.nid++, k }); });
+    if (g.opts.joker) d.push({ id: g.nid++, k: 'J' }, { id: g.nid++, k: 'J' }); if (g.opts.devil) d.push({ id: g.nid++, k: 'D' });
     return shuffle(g, d);
   }
   function startRound(g) {
@@ -40,6 +42,7 @@
     g.turn = g.alive[g.lead] ? g.lead : nextAlive(g, g.lead);
     g.ev.push({ t: 'round', n: g.round, target: g.target, lead: g.turn, devil: !!g.opts.devil });
   }
+  const gunOf = (g, p) => g.opts.shared ? g.gun[0] : g.gun[p];
   const honest = (g, cards) => cards.every(c => c.k === g.target || c.k === 'J');
 
   // who may act right now: the player whose turn it is (play/call), or the current shooter (pull)
@@ -52,6 +55,18 @@
     return ids.every(id => g.hands[p].some(c => c.id === id));
   }
 
+  // reveal the last play. caller = the player who shouted "Liar!", or -1 for the automatic showdown (nobody else holds a card):
+  // a lie (or a Devil) is punished as usual; an honest play in an automatic showdown costs nobody a shot and a fresh round starts.
+  function resolve(g, caller, by) {
+    const acc = g.last.by, cards = g.last.cards, ok = honest(g, cards), devil = cards.some(c => c.k === 'D'), auto = by < 0;
+    const loser = ok ? (auto ? -1 : caller) : acc;
+    g.shooters = devil ? (() => { const l = []; let i = acc; if (!g.alive[i]) i = nextAlive(g, i); for (let k = 0; k < g.n; k++) { const j = (i + k) % g.n; if (g.alive[j] && j !== acc) l.push(j); } /* the Devil's owner is spared */ return l; })() : (loser < 0 ? [] : [loser]);
+    g.ev.push({ t: 'call', by: auto ? -1 : caller, acc, cards: cards.map(c => ({ id: c.id, k: c.k })), honest: ok, devil, loser, shooters: g.shooters.slice(), auto });
+    g.log.push({ t: 'call', by: auto ? -1 : caller, acc, honest: ok, devil, auto, r: g.round });
+    if (!g.shooters.length) { g.lead = nextAlive(g, acc); startRound(g); return; }
+    g.sidx = 0; g.phase = 'trigger'; g.lead = loser >= 0 ? loser : acc;
+  }
+
   // apply one action of player p. returns true if legal (and g mutated).
   function apply(g, p, a) {
     if (g.phase === 'over' || !a || p < 0 || p >= g.n || !g.alive[p]) return false;
@@ -62,25 +77,24 @@
       g.pile.push(...cards); g.last = { by: p, n: cards.length, cards };
       // next to act: next living player that still has cards. If nobody else has cards left, the next player must call.
       let nx = -1; for (let k = 1; k < g.n; k++) { const j = (p + k) % g.n; if (g.alive[j] && g.hands[j].length) { nx = j; break; } }
-      if (nx < 0) { nx = nextAlive(g, p); g.forced = true; } else g.forced = false;
+      g.forced = false; if (nx < 0) nx = nextAlive(g, p);
       g.turn = nx; g.ev.push({ t: 'play', by: p, n: cards.length, ids: a.ids.slice(), next: nx, left: g.hands[p].length });
-      g.log.push({ t: 'play', by: p, n: cards.length, r: g.round }); return true;
+      g.log.push({ t: 'play', by: p, n: cards.length, r: g.round });
+      // nobody else holds a card any more: nobody is forced to do anything, the last play is simply turned over (auto showdown)
+      if (!g.alive.some((al, j) => al && j !== p && g.hands[j].length)) resolve(g, p, -1);
+      return true;
     }
     if (a.t === 'call') {
       if (!canCall(g, p)) { g.seq--; return false; }
-      const acc = g.last.by, cards = g.last.cards, ok = honest(g, cards), devil = cards.some(c => c.k === 'D');
-      const loser = ok ? p : acc;
-      g.shooters = devil ? (() => { const l = []; let i = acc; if (!g.alive[i]) i = nextAlive(g, i); for (let k = 0; k < g.n; k++) { const j = (i + k) % g.n; if (g.alive[j] && j !== acc) l.push(j); } /* the Devil's owner is spared */ return l; })() : [loser];
-      g.sidx = 0; g.phase = 'trigger'; g.lead = loser;
-      g.ev.push({ t: 'call', by: p, acc, cards: cards.map(c => ({ id: c.id, k: c.k })), honest: ok, devil, loser, shooters: g.shooters.slice() });
-      g.log.push({ t: 'call', by: p, acc, honest: ok, devil, r: g.round }); return true;
+      resolve(g, p, p); return true;
     }
     if (a.t === 'pull') {
       if (g.phase !== 'trigger' || g.shooters[g.sidx] !== p) { g.seq--; return false; }
-      const gn = g.gun[p], lone = g.sidx === g.shooters.length - 1 && aliveList(g).length === 1;   // the last one standing never dies to a Devil sweep
+      const gn = gunOf(g, p), lone = g.sidx === g.shooters.length - 1 && aliveList(g).length === 1;   // the last one standing never dies to a Devil sweep
       const dead = gn.pos === gn.bullet && !lone; const pos = gn.pos; if (!dead) gn.pos++; g.shots[p]++;
       if (dead) g.alive[p] = false;
-      g.ev.push({ t: 'pull', p, dead, pos, risk: dead ? 1 : 1 / (CH - gn.pos + 1) });
+      const risk = dead ? 1 : 1 / (CH - gn.pos + 1); if (dead && g.opts.shared) { gn.pos = 0; gn.bullet = ri(g, CH); }   // shared revolver: after a death it is reloaded and spun
+      g.ev.push({ t: 'pull', p, dead, pos, risk, reload: !!(dead && g.opts.shared) });
       g.log.push({ t: 'pull', p, dead, r: g.round });
       g.sidx++;
       // everyone who is still to shoot but already dead can't happen (only the shooter itself dies); finish
@@ -97,7 +111,7 @@
   // ---- bot ----
   // chance the previous claim is a lie, from what the bot can see (its own hand) and what was played this round
   function suspicion(g, p) {
-    const L = g.last; if (!L) return 0; const per = g.n >= 5 ? 8 : 6, total = per + 2;
+    const L = g.last; if (!L) return 0; const per = perKind(g), total = per + (g.opts.joker ? 2 : 0);
     const mine = g.hands[p].filter(c => c.k === g.target || c.k === 'J').length;
     const claimedSoFar = g.pile.length;                            // every card played so far this round was claimed as the table card
     const room = Math.max(0, total - mine);                        // table cards (+jokers) that can be on the pile at most
@@ -127,6 +141,6 @@
     return { t: 'play', ids: ids.slice(0, 3) };
   }
 
-  root.Sus = { CHARS, KINDS, MAXP, CH, HAND, DEFAULTS, normSettings, newGame, apply, bot, actor, canCall, mustCall, legalPlay, honest, aliveList, nextAlive, suspicion };
+  root.Sus = { CHARS, KINDS, MAXP, CH, HAND, DEFAULTS, normSettings, gunOf, newGame, apply, bot, actor, canCall, mustCall, legalPlay, honest, aliveList, nextAlive, suspicion };
   if (typeof module !== 'undefined') module.exports = root.Sus;
 })(typeof window !== 'undefined' ? window : globalThis);

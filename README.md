@@ -17,3 +17,10 @@ Note: the whole game state lives in the room (hands included) — fine for frien
 - Double-click the table: slam it with both fists (can't spam: next slam only after the animation ends; also shown to other players online).
 - Click an animal: point at them.
 - BGM is now a soft jazz loop (Dm7–G7–Cmaj7–A7, walking bass, brushed ride, vibes).
+
+## Table options
+- **Shared gun**: the whole table shares ONE 6-chamber revolver (1 bullet). Every loser pulls the same trigger and the chamber keeps advancing until someone dies, then the gun is reloaded. In 3D the gun slides to whoever has to shoot; the "Shared gun" chip in the header shows (hover/click) the chambers left — it is public information.
+- **Joker (gold star)**: off by default. When off the deck is only Ace/King/Queen (a few more cards per kind so everyone still gets 5), plus the Devil if enabled.
+
+## Running out of cards
+Players with no cards are skipped. When nobody else holds a card, the last play is turned over automatically (no one is forced to call): a lie → the player pulls the trigger; the truth → nobody pulls and a new round is dealt. A Devil in that play still makes everyone else pull.
