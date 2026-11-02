@@ -35,6 +35,7 @@
   function rulesHTML(s, edit, offline) {
     let h = '<div class="rule-row"><div><b>' + t('rDevil') + '</b><p>' + t('rDevilD') + '</p></div>' + seg('devil', [[0, t('offS')], [1, t('on')]], s.devil ? 1 : 0, edit) + '</div>';
     if (offline) h += '<div class="rule-row"><div><b>' + t('rBots') + '</b><p>' + t('rBotsD') + '</p></div>' + seg('bots', [[1, '1'], [2, '2'], [3, '3'], [4, '4']], s.bots, edit) + '</div>';
+    h += '<div class="rule-row"><div><b>' + t('rBotLv') + '</b><p>' + t('rBotLvD') + '</p></div>' + seg('botLevel', [[0, t('lvEasy')], [1, t('lvNormal')], [2, t('lvHard')]], s.botLevel, edit) + '</div>';
     return h;
   }
   function wireRules(root, apply) { root.querySelectorAll('.seg-btn').forEach(b => { b.onclick = () => { if (b.disabled) return; Snd.play('click'); let v = b.dataset.v; v = b.dataset.k === 'devil' ? v === '1' : +v; apply(b.dataset.k, v); }; }); }
@@ -187,18 +188,18 @@
         const row = '<div class="reveal-row">' + e.cards.map(c => '<img src="' + curl(c.k) + '" alt="' + c.k + '">').join('') + '</div>';
         if (!U.d3) { $('center').innerHTML = '<div class="claim-big">' + esc(t('reveal', { n: g.names[e.acc] })) + '</div>' + row; }
         if (U.d3) await S3().reveal(e.acc, e.cards); else await sleep(1500);
-        if (e.devil) { Snd.play('devil'); say(t('devilT'), 'bad'); flashScreen('#7a0a22'); shake(); setExpr(e.acc, 'hurt', 1800); await sleep(1500); }
-        else { say(e.honest ? t('honestT', { n: nm(e.acc), m: nm(e.loser) }) : t('liarT', { n: nm(e.acc) }), e.honest ? 'good' : 'bad'); setExpr(e.acc, e.honest ? 'smug' : 'hurt', 1600); if (e.honest) setExpr(e.by, 'scared', 1600); await sleep(1300); }
+        if (e.devil) { Snd.play('devil'); say(t('devilT', { n: nm(e.acc) }), 'bad'); flashScreen('#7a0a22'); shake(); setExpr(e.acc, 'hurt', 1800); await sleep(1500); }
+        else { say(e.honest ? tr('honestT', { n: nm(e.acc), m: nm(e.loser) }) : tr('liarT', { n: nm(e.acc) }), e.honest ? 'good' : 'bad'); setExpr(e.acc, e.honest ? 'smug' : 'hurt', 1600); if (e.honest) setExpr(e.by, 'scared', 1600); await sleep(1300); }
         break;
       }
       case 'pull': {
-        say(t('pullT', { n: nm(e.p) }), 'warn'); setExpr(e.p, 'scared', 3000); Snd.play('aim'); const beats = e.dead ? 3 : 2 + (e.pos >= 3 ? 1 : 0);
+        say(tr('pullT', { n: nm(e.p) }), 'warn'); setExpr(e.p, 'scared', 3000); Snd.play('aim'); const beats = e.dead ? 3 : 2 + (e.pos >= 3 ? 1 : 0);
         if (U.d3) await S3().pullStart(e.p, beats); else for (let i = 0; i < beats; i++) { Snd.play('beat'); await sleep(520); }
         if (e.dead) {
-          Snd.play('live'); Snd.duck(1600); flashScreen('#ff4d6d'); shake(); say(t('bang'), 'bad', t('dead', { n: nm(e.p) })); setExpr(e.p, 'dead'); Fx.blood(seatEl(e.p)); setTimeout(() => Snd.play('hurt'), 140); floatAt(e.p, '☠', '#ff4d6d');
+          Snd.play('live'); Snd.duck(1600); flashScreen('#ff4d6d'); shake(); say(tr('bang'), 'bad', tr('dead', { n: nm(e.p) })); setExpr(e.p, 'dead'); Fx.blood(seatEl(e.p)); setTimeout(() => Snd.play('hurt'), 140); floatAt(e.p, '☠', '#ff4d6d');
           if (U.d3) await S3().pullEnd(e.p, true); else await sleep(1500);
         } else {
-          Snd.play('blank'); say(t('click'), 'good', t('safe', { n: nm(e.p), a: e.pos + 1 })); setExpr(e.p, 'laugh', 1400); Fx.smoke(seatEl(e.p));
+          Snd.play('blank'); say(tr('click'), 'good', tr('safe', { n: nm(e.p), a: e.pos + 1 })); setExpr(e.p, 'laugh', 1400); Fx.smoke(seatEl(e.p));
           if (U.d3) await S3().pullEnd(e.p, false); else await sleep(1000);
         }
         U.view.alive = g.alive.slice(); break;

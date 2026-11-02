@@ -16,7 +16,7 @@ const Net = (function () {
   const codeGen = () => { const c = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; let s = ''; for (let i = 0; i < 5; i++) s += c[Math.floor(Math.random() * c.length)]; return s; };
   const LOCAL_KEY = 'sus_local_room', LAST_KEY = 'sus_last_room', TTL = 12 * 36e5;
 
-  function normalize(r) { if (!r) return r; r.seats = r.seats || {}; r.specs = r.specs || {}; r.settings = Sus.normSettings(r.settings); return r; }
+  function normalize(r) { if (!r) return r; if (r.sign == null) r.sign = Math.floor(Math.random() * 1000); r.seats = r.seats || {}; r.specs = r.specs || {}; r.settings = Sus.normSettings(r.settings); return r; }
   function getG(room) {
     room = room || S.room; if (!room || !room.gs) return null;
     if (room.gs !== S.gKey) { try { S.g = JSON.parse(room.gs); S.gKey = room.gs; } catch (e) { return null; } }
@@ -77,7 +77,7 @@ const Net = (function () {
     S.mode = null; S.code = null; S.room = null; S.g = null; S.gKey = null;
   }
 
-  const baseRoom = host => ({ game: 'sus', hostUid: host, status: 'lobby', settings: Object.assign({}, Sus.DEFAULTS), seats: {}, gs: '', createdAt: Date.now() });
+  const baseRoom = host => ({ game: 'sus', hostUid: host, status: 'lobby', settings: Object.assign({}, Sus.DEFAULTS), seats: {}, gs: '', createdAt: Date.now(), sign: Math.floor(Math.random() * 1000) });   // sign = which tavern sign hangs on the wall for the whole life of the room
   const botName = () => t('bot');
 
   const specName = () => { try { return localStorage.getItem('sus_name') || 'Guest'; } catch (e) { return 'Guest'; } };
@@ -120,9 +120,9 @@ const Net = (function () {
   }
 
   // table order is shuffled when a game starts; g.seatKeys[i] = room seat key of table position i (bots: 'b1'..)
-  function makeGame(entries, settings) {
+  function makeGame(entries, settings, sign) {
     const order = entries.slice(); for (let i = order.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [order[i], order[j]] = [order[j], order[i]]; }
-    const g = Sus.newGame(order.map(e => e.name), settings, null, order.map(e => e.char)); g.seatKeys = order.map(e => e.key); return g;
+    const g = Sus.newGame(order.map(e => e.name), settings, null, order.map(e => e.char)); g.seatKeys = order.map(e => e.key); if (sign != null) g.sign = sign; return g;
   }
   const seatEntries = r => SEATK.filter(k => r.seats[k]).map(k => ({ key: k, name: r.seats[k].name, char: r.seats[k].char }));
   function startLocal(name, settings, char) {
@@ -130,7 +130,7 @@ const Net = (function () {
     const room = baseRoom('local'); room.settings = Sus.normSettings(settings);
     room.seats.s0 = { uid: 'local', name, local: true, connected: true, char: Sus.CHARS.includes(char) ? char : undefined }; if (!room.seats.s0.char) room.seats.s0.char = freeChar(room);
     const bn = (t('botNames') || []); for (let i = 1; i <= room.settings.bots; i++) room.seats['s' + i] = { uid: 'bot' + i, name: bn[(i - 1) % bn.length] || ('Bot ' + i), bot: true, connected: true, char: freeChar(room) };
-    room.status = 'play'; room.gs = JSON.stringify(makeGame(seatEntries(room), room.settings));
+    room.status = 'play'; room.gs = JSON.stringify(makeGame(seatEntries(room), room.settings, room.sign));
     S.room = normalize(room); emit(null); return 'LOCAL';
   }
   const isHost = room => S.mode === 'local' || (!!room && room.hostUid === MY_UID);
@@ -138,7 +138,7 @@ const Net = (function () {
   const setSetting = (k, v) => mutate(r => { if (r.status !== 'lobby') return undefined; r.settings[k] = v; r.settings = Sus.normSettings(r.settings); return r; });
   const startOnline = () => mutate(r => {
     if (r.status !== 'lobby' || r.hostUid !== MY_UID || seatEntries(r).length < 2) return undefined;
-    r.status = 'play'; r.gs = JSON.stringify(makeGame(seatEntries(r), r.settings)); return r;
+    r.status = 'play'; r.gs = JSON.stringify(makeGame(seatEntries(r), r.settings, r.sign)); return r;
   });
   // one action by me; the engine decides if it is legal. `as` = table index to act for (local bots / host acting for a dropped player).
   // lobby: host adds/removes bots; everyone picks their own animal
@@ -156,7 +156,7 @@ const Net = (function () {
   });
   const rematch = () => mutate(r => {
     if (r.status !== 'play' || (S.mode === 'online' && r.hostUid !== MY_UID)) return undefined;
-    r.gs = JSON.stringify(makeGame(seatEntries(r).filter(e => S.mode === 'local' || r.seats[e.key].connected !== false), r.settings)); return r;
+    r.gs = JSON.stringify(makeGame(seatEntries(r).filter(e => S.mode === 'local' || r.seats[e.key].connected !== false), r.settings, r.sign)); return r;
   });
   function emote(kind) { if (S.mode === 'online' && S.ref && mySeat()) S.ref.child('emote').set({ key: mySeat(), k: kind, ts: Date.now() + Math.random() }).catch(() => {}); }
   function leave() {

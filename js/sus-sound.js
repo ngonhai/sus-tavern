@@ -122,12 +122,13 @@ const Snd = (function () {
   function shout(pm) {
     if (muted) return; const c = ac(); if (!c) return; pm = pm || 1; const t0 = c.currentTime + .01, D = .8;
     const out = c.createGain(); out.gain.setValueAtTime(.0001, t0); out.gain.exponentialRampToValueAtTime(.9, t0 + .03); out.gain.setValueAtTime(.9, t0 + .45); out.gain.exponentialRampToValueAtTime(.0001, t0 + D);
-    const ws = c.createWaveShaper(), cv = new Float32Array(256); for (let i = 0; i < 256; i++) { const x = i / 128 - 1; cv[i] = Math.tanh(x * 3); } ws.curve = cv; ws.connect(out); out.connect(master);
+    const ws = c.createWaveShaper(), cv = new Float32Array(256); for (let i = 0; i < 256; i++) { const x = i / 128 - 1; cv[i] = Math.tanh(x * 9 + .15); } /* hard clipping = rough, torn voice */ ws.curve = cv; const am = c.createGain(); am.gain.value = .72; const amL = c.createOscillator(), amG = c.createGain(); amL.type = 'sawtooth'; amL.frequency.value = 58 + 10 * pm; amG.gain.value = .38; amL.connect(amG); amG.connect(am.gain); amL.start(t0); amL.stop(t0 + D + .05);   // vocal-fry / growl
+    ws.connect(am); am.connect(out); out.connect(master);
     const F = [[[350, 1100], [800, 1250], [350, 2300], [500, 1350]], [[1100, 2400], [1250, 2500], [2300, 3000], [1350, 2400]]];
     const T = [0, .09, .36, .62];
     for (let k = 0; k < 2; k++) {                       // two voices a hair apart = a crowd-ish shout
-      const o = c.createOscillator(); o.type = 'sawtooth'; const f0 = (k ? 1.012 : 1) * 150 * pm; o.frequency.setValueAtTime(f0 * 1.2, t0); o.frequency.linearRampToValueAtTime(f0 * 1.3, t0 + .08); o.frequency.setValueAtTime(f0 * 1.3, t0 + .36); o.frequency.linearRampToValueAtTime(f0 * .72, t0 + D);   // Li→  ar↘
-      const lfo = c.createOscillator(), lg = c.createGain(); lfo.frequency.value = 6; lg.gain.value = 4 * pm; lfo.connect(lg); lg.connect(o.frequency); lfo.start(t0); lfo.stop(t0 + D + .05);
+      const o = c.createOscillator(); o.type = 'sawtooth'; const f0 = (k ? 1.018 : 1) * 128 * pm; o.frequency.setValueAtTime(f0 * 1.2, t0); o.frequency.linearRampToValueAtTime(f0 * 1.3, t0 + .08); o.frequency.setValueAtTime(f0 * 1.3, t0 + .36); o.frequency.linearRampToValueAtTime(f0 * .72, t0 + D);   // Li→  ar↘
+      const lfo = c.createOscillator(), lg = c.createGain(); lfo.frequency.value = 6; lg.gain.value = 9 * pm; lfo.connect(lg); lg.connect(o.frequency); lfo.start(t0); lfo.stop(t0 + D + .05);
       for (let b = 0; b < 3; b++) {
         const bp = c.createBiquadFilter(); bp.type = 'bandpass'; bp.Q.value = b ? 9 : 6; const fr = b < 2 ? F[b] : [[2500, 2500], [2600, 2600], [3300, 3300], [2700, 2700]];
         bp.frequency.setValueAtTime(fr[0][b < 2 ? 0 : 0], t0); for (let i = 1; i < 4; i++) bp.frequency.linearRampToValueAtTime(b < 2 ? fr[i][0] : fr[i][0], t0 + T[i]);
@@ -139,6 +140,9 @@ const Snd = (function () {
     }
     const nz = c.createBufferSource(), nb = c.createBuffer(1, c.sampleRate * .12, c.sampleRate), d = nb.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length); nz.buffer = nb;
     const hp = c.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 1800; const ng = c.createGain(); ng.gain.value = .25; nz.connect(hp); hp.connect(ng); ng.connect(master); nz.start(t0 + .02);
+    // breathy rasp: a band of noise under the whole shout
+    const rn = c.createBufferSource(), rb = c.createBuffer(1, Math.ceil(c.sampleRate * D), c.sampleRate), rd = rb.getChannelData(0); for (let i = 0; i < rd.length; i++) rd[i] = Math.random() * 2 - 1; rn.buffer = rb;
+    const rf = c.createBiquadFilter(); rf.type = 'bandpass'; rf.frequency.value = 1700; rf.Q.value = .8; const rg = c.createGain(); rg.gain.setValueAtTime(.0001, t0); rg.gain.exponentialRampToValueAtTime(.32, t0 + .05); rg.gain.setValueAtTime(.32, t0 + .45); rg.gain.exponentialRampToValueAtTime(.0001, t0 + D); rn.connect(rf); rf.connect(rg); rg.connect(ws); rn.start(t0);
   }
   let hb = null;
   function heart(on, ms) { clearInterval(hb); hb = null; if (on) hb = setInterval(() => play('beat'), ms || 1300); }

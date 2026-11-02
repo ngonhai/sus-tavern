@@ -7,8 +7,8 @@
 (function (root) {
   'use strict';
   const CHARS = ['pig', 'fox', 'dog', 'goat', 'octo', 'penguin', 'hawk', 'turtle'], KINDS = ['A', 'K', 'Q'], MAXP = 5, CH = 6, HAND = 5;
-  const DEFAULTS = { devil: false, bots: 3 };
-  function normSettings(s) { s = Object.assign({}, DEFAULTS, s || {}); s.devil = !!s.devil; s.bots = Math.max(1, Math.min(MAXP - 1, Math.round(+s.bots || 3))); return s; }
+  const DEFAULTS = { devil: false, bots: 3, botLevel: 1 };   // botLevel: 0 easy, 1 normal, 2 hard
+  function normSettings(s) { s = Object.assign({}, DEFAULTS, s || {}); s.devil = !!s.devil; s.bots = Math.max(1, Math.min(MAXP - 1, Math.round(+s.bots || 3))); s.botLevel = Math.max(0, Math.min(2, Math.round(+s.botLevel == null || isNaN(+s.botLevel) ? 1 : +s.botLevel))); return s; }
 
   // mulberry32, state kept in g.rs
   function rnd(g) { let a = (g.rs = (g.rs + 0x6D2B79F5) >>> 0); a = Math.imul(a ^ (a >>> 15), a | 1); a ^= a + Math.imul(a ^ (a >>> 7), a | 61); return ((a ^ (a >>> 14)) >>> 0) / 4294967296; }
@@ -25,6 +25,7 @@
     const used = new Set((picks || []).filter(c => c && CHARS.includes(c))), free = shuffle(g, CHARS.filter(c => !used.has(c)));
     g.chars = names.map((_, i) => { const c = picks && picks[i]; return c && CHARS.includes(c) ? c : free.shift(); });
     for (let i = 0; i < n; i++) g.gun.push({ pos: 0, bullet: ri(g, CH) });
+    g.sign = Math.floor(Math.random() * 1000);                       // picks the tavern sign on the wall (3D); shared by everyone in the room because it lives in the game state
     g.lead = ri(g, n); startRound(g); return g;
   }
   function deckFor(g) {
@@ -69,7 +70,7 @@
       if (!canCall(g, p)) { g.seq--; return false; }
       const acc = g.last.by, cards = g.last.cards, ok = honest(g, cards), devil = cards.some(c => c.k === 'D');
       const loser = ok ? p : acc;
-      g.shooters = devil ? (() => { const l = []; let i = acc; if (!g.alive[i]) i = nextAlive(g, i); for (let k = 0; k < g.n; k++) { const j = (i + k) % g.n; if (g.alive[j]) l.push(j); } return l; })() : [loser];
+      g.shooters = devil ? (() => { const l = []; let i = acc; if (!g.alive[i]) i = nextAlive(g, i); for (let k = 0; k < g.n; k++) { const j = (i + k) % g.n; if (g.alive[j] && j !== acc) l.push(j); } /* the Devil's owner is spared */ return l; })() : [loser];
       g.sidx = 0; g.phase = 'trigger'; g.lead = loser;
       g.ev.push({ t: 'call', by: p, acc, cards: cards.map(c => ({ id: c.id, k: c.k })), honest: ok, devil, loser, shooters: g.shooters.slice() });
       g.log.push({ t: 'call', by: p, acc, honest: ok, devil, r: g.round }); return true;
@@ -104,18 +105,25 @@
     const dens = room / Math.max(1, room + (g.n * HAND - total) * 1.0);   // rough chance a random unseen card is a match
     return Math.min(.95, 1 - Math.pow(Math.max(.05, dens + .18), L.n) + claimedSoFar * .03);
   }
+  // bot skill (hard bots only call when they are nearly sure — thr — because a wrong call costs a shot; tuned by simulation): call = how eagerly it calls a suspicious claim, lie = how often it bluffs, noise = how badly it misjudges, sloppy = chance of playing random cards
+  const LVL = [{ call: .5, lie: .08, noise: .5, sloppy: .25 }, { call: .85, lie: .25, noise: 0, sloppy: 0 }, { call: 1, lie: .03, noise: 0, sloppy: 0, thr: .85, devil: true }];
   function bot(g, p) {
     if (g.phase === 'trigger') return { t: 'pull' };
+    const lv = Math.max(0, Math.min(2, g.opts.botLevel == null ? 1 : g.opts.botLevel)), P = LVL[lv];
     const h = g.hands[p], good = h.filter(c => c.k === g.target || c.k === 'J'), bad = h.filter(c => !(c.k === g.target || c.k === 'J'));
     if (mustCall(g, p)) return { t: 'call' };
-    if (canCall(g, p)) { const s = suspicion(g, p), r = rnd(g); if (s >= 1 || r < s * .85 || (!h.length)) return { t: 'call' }; }
+    if (canCall(g, p)) { let s = suspicion(g, p); if (P.noise) s = Math.max(0, Math.min(1, s + (rnd(g) - .5) * P.noise)); const r = rnd(g); if ((s >= 1 && (lv > 0 || r < .7)) || (P.thr != null ? s >= P.thr : r < s * P.call) || (!h.length)) return { t: 'call' }; }
     if (!h.length) return { t: 'call' };
-    // play: mostly honest if it can, sometimes dumps junk
     const want = 1 + ri(g, Math.min(3, h.length)); const ids = [];
-    const lie = good.length === 0 || (rnd(g) < .25 && bad.length);
-    if (!lie) good.slice(0, want).forEach(c => ids.push(c.id)); else { bad.slice(0, want).forEach(c => ids.push(c.id)); if (rnd(g) < .3 && good.length && ids.length < 3) ids.push(good[0].id); }
+    // easy bots sometimes just throw random cards
+    if (P.sloppy && rnd(g) < P.sloppy) { h.slice().sort(() => rnd(g) - .5).slice(0, want).forEach(c => ids.push(c.id)); return { t: 'play', ids }; }
+    // the Devil is safe for whoever played it (everybody else shoots when it is revealed), so hard bots play it as soon as they hold it
+    const dv = h.find(c => c.k === 'D');
+    if (P.devil && dv) { ids.push(dv.id); if (good.length && rnd(g) < .4) ids.push(good[0].id); return { t: 'play', ids }; }
+    const lie = good.length === 0 || (rnd(g) < P.lie && bad.length);
+    if (!lie) good.slice(0, want).forEach(c => ids.push(c.id));
+    else { bad.slice(0, lv === 2 ? Math.min(want, rnd(g) < .7 ? 1 : 2) : want).forEach(c => ids.push(c.id)); if (rnd(g) < .3 && good.length && ids.length < 3) ids.push(good[0].id); }
     if (!ids.length) ids.push(h[0].id);
-    // devil: never hide it among honest cards if we hold it and are afraid of a call... bots just dump it with probability
     return { t: 'play', ids: ids.slice(0, 3) };
   }
 
