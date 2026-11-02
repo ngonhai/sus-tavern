@@ -54,7 +54,11 @@ const S3D = (function () {
 
   // ---------------------------------------------------------------- room ----
   const LABEL = (txt, w, h, col, bg) => { const c = document.createElement('canvas'); c.width = 512; c.height = Math.round(512 * h / w); const g = c.getContext('2d'); if (bg) { g.fillStyle = bg; g.fillRect(0, 0, c.width, c.height); }
-    g.font = '800 ' + (c.height * .62 | 0) + 'px "Sedgwick Ave Display","Permanent Marker",Impact,sans-serif'; for (let fs = c.height * .62 | 0; fs > 12 && (g.font = '800 ' + fs + 'px "Sedgwick Ave Display","Permanent Marker",Impact,sans-serif', g.measureText(txt).width > c.width * .94); fs -= 4); g.fillStyle = col; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(txt, c.width / 2, c.height / 2);
+    // multi-line: "\n" in the text starts a new line; the font shrinks until every line fits the width and all lines fit the height
+    const lines = String(txt).split('\n'), FONT = fs => '800 ' + fs + 'px "Sedgwick Ave Display","Permanent Marker",Impact,sans-serif';
+    let fs = Math.min(c.height * .62, c.height * .9 / (lines.length * 1.12)) | 0;
+    for (; fs > 12; fs -= 3) { g.font = FONT(fs); if (Math.max(...lines.map(l => g.measureText(l).width)) <= c.width * .94) break; }
+    g.font = FONT(fs); g.fillStyle = col; g.textAlign = 'center'; g.textBaseline = 'middle'; lines.forEach((l, i) => g.fillText(l, c.width / 2, c.height / 2 + (i - (lines.length - 1) / 2) * fs * 1.12));
     g.globalCompositeOperation = 'destination-out'; for (let i = 0; i < 70; i++) { g.lineWidth = .6 + Math.random() * 2; g.strokeStyle = 'rgba(0,0,0,' + (.4 + Math.random() * .6) + ')'; const x = Math.random() * c.width, y = Math.random() * c.height, l = 30 + Math.random() * 160; g.beginPath(); g.moveTo(x, y); g.lineTo(x + l, y + (Math.random() - .5) * 6); g.stroke(); }
     const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t; };
   function buildRoom() {
@@ -65,12 +69,13 @@ const S3D = (function () {
     const COL = ['#ffb547', '#5eead4', '#ff8a6a', '#6cc4f5', '#f6f0e2', '#b39bff', '#7bd88f'];
     for (let ring = 0; ring < 2; ring++) for (let k = 0; k < 44; k++) { const a = k / 44 * Math.PI * 2, rr = 5.9, h = .22 + Math.random() * .16, b = cyl(.04, .05, h, 6, M(COL[(k * 3 + ring) % COL.length]), Math.sin(a) * rr, 1.55 + ring * .85 + h / 2, Math.cos(a) * rr, scene, false); b.rotation.y = a; }
     for (let ring = 0; ring < 2; ring++) { const sh = new THREE.Mesh(new THREE.TorusGeometry(5.9, .04, 4, 40), M('#7e4526')); sh.rotation.x = Math.PI / 2; sh.position.y = 1.53 + ring * .85; scene.add(sh); }
-    // The tavern sign on the wall: every game picks one of these (g.sign is random per room/game, so all players in a room see the same one). Add or edit names here.
-    const SIGNS = [['SUS TAVERN', '#ff8a6a'], ['CẨN TRỌNG BAR', '#ffd36a'], ['NO TRUST INN', '#8ee3d0'], ['LAST CALL', '#ff6a6a'], ['TRÊN ĐỜI CÓ 2 LOẠI\nNÓI DỐI VÀ NÓI DỐI NHIỀU LẦN', '#c9a7ff'], ['DEAD MAN\'S TAB', '#ff9f5a'], ['IT\'S NÓI DỐI TIME', '#ffb547'], ['QUÁN SUS-PICIOUS', '#ff8a6a'], ['LIARS!!!', '#7fd1ff']];
+    // The tavern sign on the wall (use \n in a name for a second line): every game picks one of these (g.sign is random per room/game, so all players in a room see the same one). Add or edit names here.
+    const SIGNS = [['SUS TAVERN', '#ff8a6a'], ['CẨN TRỌNG BAR', '#ffd36a'], ['NO TRUST INN', '#8ee3d0'], ['LAST CALL', '#ff6a6a'], ['TRÊN ĐỜI CÓ 2 LOẠI NGƯỜI\nNÓI DỐI VÀ NÓI DỐI NHIỀU LẦN', '#c9a7ff'], ['DEAD MAN\'S TAB', '#ff9f5a'], ['IT\'S NÓI DỐI TIME', '#ffb547'], ['QUÁN SUS-PICIOUS', '#ff8a6a'], ['LIARS!!!', '#7fd1ff']];
     const signMat = new THREE.MeshBasicMaterial({ map: LABEL(SIGNS[0][0], 2.6, .7, SIGNS[0][1]), transparent: true });
-    setSign = n => { const d = SIGNS[((n | 0) % SIGNS.length + SIGNS.length) % SIGNS.length]; if (signMat.map) signMat.map.dispose(); signMat.map = LABEL(d[0], 2.6, .7, d[1]); signMat.needsUpdate = true; };
+    const signMeshes = [];
+    setSign = n => { const d = SIGNS[((n | 0) % SIGNS.length + SIGNS.length) % SIGNS.length], k = 1 + .75 * (d[0].split('\n').length - 1); if (signMat.map) signMat.map.dispose(); signMat.map = LABEL(d[0], 2.6, .7 * k, d[1]); signMat.needsUpdate = true; signMeshes.forEach(m => m.scale.y = k); };
     const sign = new THREE.Mesh(new THREE.PlaneGeometry(2.6, .7), signMat); sign.position.set(0, 3.1, -5.9); scene.add(sign);
-    const sign2 = sign.clone(); sign2.position.set(0, 3.1, 5.9); sign2.rotation.y = Math.PI; scene.add(sign2);
+    const sign2 = sign.clone(); sign2.position.set(0, 3.1, 5.9); sign2.rotation.y = Math.PI; scene.add(sign2); signMeshes.push(sign, sign2);
     // lights
     scene.add(new THREE.HemisphereLight(0x5b8fa0, 0x2a1a10, .5)); scene.add(new THREE.AmbientLight(0x40606a, .35));
     lampSpot = new THREE.SpotLight(0xffc27a, 20, 8, .95, .7, 1.4); lampSpot.position.set(0, 2.6, 0); lampSpot.target.position.set(0, TY, 0); lampSpot.castShadow = true; lampSpot.shadow.mapSize.set(1024, 1024); scene.add(lampSpot, lampSpot.target);

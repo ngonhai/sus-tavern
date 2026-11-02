@@ -120,7 +120,7 @@
     }).join('');
   }
   function statusText(g) {
-    if (g.phase === 'over') return t('winner', { n: esc(g.names[g.winner]) });
+    if (g.phase === 'over') return tr('winner', { n: esc(g.names[g.winner]) });
     if (g.phase === 'trigger') { const s = g.shooters[g.sidx]; return s === U.me && !U.spec ? t('pullYou') : t('pullOf', { n: esc(g.names[s]) }); }
     if (g.turn === U.me && !U.spec) return Sus.mustCall(g, U.me) ? t('mustCall') : t('turnYou') + ' — ' + t('playHint', { c: t('cardName')[g.target] });
     return t('turnOf', { n: esc(g.names[g.turn]) });
@@ -204,7 +204,7 @@
         }
         U.view.alive = g.alive.slice(); break;
       }
-      case 'over': { Snd.play(e.w === U.me ? 'win' : 'lose'); if (e.w === U.me && !U.spec) Fx.confetti(); say(t('winner', { n: nm(e.w) }), 'good'); await sleep(1200); break; }
+      case 'over': { Snd.play(e.w === U.me ? 'win' : 'lose'); if (e.w === U.me && !U.spec) Fx.confetti(); say(tr('winner', { n: nm(e.w) }), 'good'); await sleep(1200); break; }
     }
   }
 
@@ -246,7 +246,7 @@
   function botMove(a) { if (U.busy || U.queue.length || !U.view) return; const g = U.view; if (Sus.actor(g) !== a) return; Net.act(Sus.bot(g, a), a); }
   function showOver(g) {
     if (U.shownOver === g.id) return; U.shownOver = g.id; const win = g.winner === U.me && !U.spec; const host = Net.isHost(Net.room());
-    setTimeout(() => modal('<h2 class="center">' + (U.spec ? t('winner', { n: esc(g.names[g.winner]) }) : win ? t('youWin') : t('youLose')) + '</h2><div class="center" style="width:90px;margin:0 auto">' + Art.avatar(g.chars[g.winner], 'laugh') + '</div><p class="center">' + t('winner', { n: esc(g.names[g.winner]) }) + '</p>' +
+    setTimeout(() => modal('<h2 class="center">' + (U.spec ? tr('winner', { n: esc(g.names[g.winner]) }) : win ? t('youWin') : t('youLose')) + '</h2><div class="center" style="width:90px;margin:0 auto">' + Art.avatar(g.chars[g.winner], 'laugh') + '</div><p class="center">' + tr('winner', { n: esc(g.names[g.winner]) }) + '</p>' +
       (host ? '<button type="button" class="btn btn-block" id="m-again">' + t('rematch') + '</button>' : '<p class="muted center small">' + t('waitHost') + '</p>') + '<button type="button" class="btn btn-secondary btn-block" id="m-lobby">' + t('toLobby') + '</button>'), 600);
     setTimeout(() => { const a = $('m-again'), l = $('m-lobby'); if (a) a.onclick = () => { closeModal(); Net.rematch(); }; if (l) l.onclick = leaveToLobby; }, 700);
   }
@@ -269,7 +269,7 @@
     $('btn-start-offline').onclick = () => { const n = needName(); if (!n) return; Snd.unlock(); Net.startLocal(n, U.settings, U.myChar); };
     $('btn-resume').onclick = () => { Snd.unlock(); Net.restoreLocal(); };
     $('btn-create-room').onclick = async () => { const n = needName(); if (!n) return; try { await Net.createOnline(n, U.myChar); } catch (e) { toast(t('onlineOff')); } };
-    $('btn-join-room').onclick = async () => { const n = needName(); if (!n) return; const code = $('input-room-code').value.trim(); if (code.length < 4) return; const r = await Net.joinOnline(code, n, U.myChar).catch(() => ({ ok: false, reason: 'noRoom' })); if (!r.ok) toast(t('noRoom')); else if (r.spectator) toast(t('youAreSpec')); };
+    $('btn-join-room').onclick = async () => { const n = needName(); if (!n) return; const code = $('input-room-code').value.trim(); if (code.length < 4) return; const r = await Net.joinOnline(code, n, U.myChar).catch(() => ({ ok: false, reason: 'noRoom' })); if (!r.ok) toast(tr('noRoom')); else if (r.spectator) toast(t('youAreSpec')); };
     $('btn-start-game').onclick = () => { Snd.unlock(); Net.startOnline(); }; $('btn-leave-waiting').onclick = leaveToLobby; $('btn-leave-game').onclick = leaveToLobby;
     $('room-code-box').onclick = () => { const u = location.origin + location.pathname + '?room=' + Net.code(); (navigator.clipboard ? navigator.clipboard.writeText(u) : Promise.reject()).then(() => toast(t('copied'))).catch(() => {}); };
     $('seats').addEventListener('mouseover', e => { const el = e.target.closest('.seat2d'); if (!el || !U.view || e.pointerType === 'touch' || +el.dataset.i !== U.me) return; const r = el.getBoundingClientRect(); showGun(+el.dataset.i, r.right, r.top + r.height / 2); });
