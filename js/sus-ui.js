@@ -192,6 +192,7 @@
         say(t('reveal', { n: nm(e.acc) }), 'warn'); Snd.play('flip');
         const row = '<div class="reveal-row">' + e.cards.map(c => '<img src="' + curl(c.k) + '" alt="' + c.k + '">').join('') + '</div>';
         if (!U.d3) { $('center').innerHTML = '<div class="claim-big">' + esc(t('reveal', { n: g.names[e.acc] })) + '</div>' + row; }
+        if (U.d3 && e.shooters && e.shooters.length) S3().passGun(e.shooters[0]);   // shared revolver: it slides to the first shooter while the cards are shown
         if (U.d3) await S3().reveal(e.acc, e.cards); else await sleep(1500);
         if (e.devil) { Snd.play('devil'); say(t('devilT', { n: nm(e.acc) }), 'bad'); flashScreen('#7a0a22'); shake(); setExpr(e.acc, 'hurt', 1800); await sleep(1500); }
         else { say(e.honest ? (e.auto ? t('autoSafe', { n: nm(e.acc) }) : tr('honestT', { n: nm(e.acc), m: nm(e.loser) })) : tr('liarT', { n: nm(e.acc) }), e.honest ? 'good' : 'bad'); setExpr(e.acc, e.honest ? 'smug' : 'hurt', 1600); if (e.honest && !e.auto) setExpr(e.by, 'scared', 1600); await sleep(e.auto && e.honest ? 1700 : 1300); }
@@ -208,6 +209,7 @@
           Snd.play('blank'); say(tr('click'), 'good', tr('safe', { n: nm(e.p), a: e.pos + 1 })); setExpr(e.p, 'laugh', 1400); Fx.smoke(seatEl(e.p));
           if (U.d3) await S3().pullEnd(e.p, false); else await sleep(1000);
         }
+        if (U.d3 && e.next >= 0) S3().passGun(e.next);
         U.view.alive = g.alive.slice(); break;
       }
       case 'over': { Snd.play(e.w === U.me ? 'win' : 'lose'); if (e.w === U.me && !U.spec) Fx.confetti(); say(tr('winner', { n: nm(e.w) }), 'good'); await sleep(1200); break; }

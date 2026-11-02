@@ -321,9 +321,17 @@ const S3D = (function () {
   }
   function focusOn(pt, k, fov, dolly) { cine.focus.copy(pt); cineTo('k', k, 500); cineTo('fov', -fov, 600); cineTo('dolly', dolly || 0, 600); document.body.classList.add('cine'); }
   function unfocus() { cineTo('k', 0, 700); cineTo('fov', 0, 700); cineTo('dolly', 0, 700); document.body.classList.remove('cine'); }
+  // shared revolver: slide the gun across the table to the player who has to shoot (called as soon as it is known, before the trigger is pulled)
+  let slideP = Promise.resolve();
+  const passGun = p => (slideP = slideP.then(() => passGun1(p)));   // slides are queued, never concurrent
+  async function passGun1(p) {
+    if (!ok || !shared || !players[p] || !guns[0] || guns[0].userData.held) return; const g = guns[0], t = restPose(p), a0 = g.position.clone(), q0 = g.quaternion.clone();
+    if (a0.distanceTo(t.pos) > .05) { Snd.play('card'); await tween(750, e => { g.position.lerpVectors(a0, t.pos, e); g.position.y += Math.sin(Math.PI * e) * .09; g.quaternion.slerpQuaternions(q0, t.q, e); }, eio); }
+    gunRest(p);
+  }
   async function pullStart(p, beats) {
     if (!ok || !players[p]) return; const P = players[p], arm = P.arms[0], g = guns[gi(p)], u = g.userData, head = () => P.head.getWorldPosition(V(0, 0, 0));
-    if (shared) { const t = restPose(p), a0 = g.position.clone(), q0 = g.quaternion.clone(); if (a0.distanceTo(t.pos) > .05) { Snd.play('card'); await tween(560, e => { g.position.lerpVectors(a0, t.pos, e); g.position.y += Math.sin(Math.PI * e) * .06; g.quaternion.slerpQuaternions(q0, t.q, e); }, eio); } gunRest(p); }
+    await passGun(p);
     // reach over the gun lying on the table, lower the hand onto the grip, close the fingers
     const hp = holdPose(u.rest.pos, u.rest.q); arm.lockQ = hp.q; arm.lockW = 0; arm.gun = true;
     await Promise.all([moveHand(arm, hp.w.clone().add(V(0, .15, 0)), 380), tween(380, e => { arm.lockW = e; }, lin)]);
@@ -437,6 +445,6 @@ const S3D = (function () {
   }
   function start() { if (!ok || running) return; running = true; resize(); lastT = performance.now(); raf = requestAnimationFrame(frame); }
   function stop() { running = false; cancelAnimationFrame(raf); clearInterval(hidT); }
-  return { err: () => lastErr, init, setup, sync, start, stop, setView, setSelected, setExpr, deal, playCards, shout, reveal, pullStart, pullEnd, slam, point, onPick: f => { cb.pick = f; }, onHover: f => { cb.hover = f; }, isOk: () => ok };
+  return { passGun, dbg: () => guns.map(g => [g.position.x, g.position.y, g.position.z, !!g.userData.held]), err: () => lastErr, init, setup, sync, start, stop, setView, setSelected, setExpr, deal, playCards, shout, reveal, pullStart, pullEnd, slam, point, onPick: f => { cb.pick = f; }, onHover: f => { cb.hover = f; }, isOk: () => ok };
 })();
 window.S3D = S3D;

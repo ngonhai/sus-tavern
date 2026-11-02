@@ -94,9 +94,9 @@
       const dead = gn.pos === gn.bullet && !lone; const pos = gn.pos; if (!dead) gn.pos++; g.shots[p]++;
       if (dead) g.alive[p] = false;
       const risk = dead ? 1 : 1 / (CH - gn.pos + 1); if (dead && g.opts.shared) { gn.pos = 0; gn.bullet = ri(g, CH); }   // shared revolver: after a death it is reloaded and spun
-      g.ev.push({ t: 'pull', p, dead, pos, risk, reload: !!(dead && g.opts.shared) });
+      const evp = { t: 'pull', p, dead, pos, risk, reload: !!(dead && g.opts.shared), next: -1 }; g.ev.push(evp);
       g.log.push({ t: 'pull', p, dead, r: g.round });
-      g.sidx++;
+      g.sidx++; if (g.sidx < g.shooters.length) evp.next = g.shooters[g.sidx];
       // everyone who is still to shoot but already dead can't happen (only the shooter itself dies); finish
       if (g.sidx >= g.shooters.length) {
         const al = aliveList(g);
