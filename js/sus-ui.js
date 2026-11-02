@@ -259,6 +259,13 @@
     setTimeout(() => { const a = $('m-again'), l = $('m-lobby'); if (a) a.onclick = () => { closeModal(); Net.rematch(); }; if (l) l.onclick = leaveToLobby; }, 700);
   }
   function helpModal() { modal('<h2>' + t('helpT') + '</h2><ul class="help-list">' + t('helpB').map(x => '<li>' + esc(x) + '</li>').join('') + '</ul><div class="reveal-row">' + ['A', 'K', 'Q', 'J', 'D'].map(k => '<img src="' + curl(k) + '" alt="' + k + '">').join('') + '</div><button type="button" class="btn btn-block" id="m-ok">' + t('ok') + '</button>', true); $('m-ok').onclick = closeModal; }
+  // ask before leaving the room/table (skipped when the game is already over)
+  function askLeave() {
+    if (U.view && U.view.phase === 'over') return leaveToLobby();
+    const playing = U.view && U.view.phase !== 'over';
+    modal('<h3>' + t('leaveQ') + '</h3><p class="muted center">' + t(playing ? 'leaveQPlaying' : 'leaveQWaiting') + '</p><button type="button" class="btn btn-block" id="m-stay">' + t('leaveStay') + '</button><button type="button" class="btn btn-secondary btn-block" id="m-leave-yes">' + t('leaveYes') + '</button>');
+    const st = $('m-stay'), ye = $('m-leave-yes'); if (st) { st.onclick = closeModal; st.focus(); } if (ye) ye.onclick = leaveToLobby;
+  }
   async function leaveToLobby() { clearTimeout(U.botT); U.view = null; U.queue = []; U.busy = false; closeModal(); await Net.leave(); document.body.classList.remove('tense'); Snd.setTension(0); showLobby(); }
 
   // ---- revolver info: hover the gun (or its seat chip); tap on touch screens ----
@@ -278,7 +285,7 @@
     $('btn-resume').onclick = () => { Snd.unlock(); Net.restoreLocal(); };
     $('btn-create-room').onclick = async () => { const n = needName(); if (!n) return; try { await Net.createOnline(n, U.myChar); } catch (e) { toast(t('onlineOff')); } };
     $('btn-join-room').onclick = async () => { const n = needName(); if (!n) return; const code = $('input-room-code').value.trim(); if (code.length < 4) return; const r = await Net.joinOnline(code, n, U.myChar).catch(() => ({ ok: false, reason: 'noRoom' })); if (!r.ok) toast(tr('noRoom')); else if (r.spectator) toast(t('youAreSpec')); };
-    $('btn-start-game').onclick = () => { Snd.unlock(); Net.startOnline(); }; $('btn-leave-waiting').onclick = leaveToLobby; $('btn-leave-game').onclick = leaveToLobby;
+    $('btn-start-game').onclick = () => { Snd.unlock(); Net.startOnline(); }; $('btn-leave-waiting').onclick = askLeave; $('btn-leave-game').onclick = askLeave;
     $('room-code-box').onclick = () => { const u = location.origin + location.pathname + '?room=' + Net.code(); (navigator.clipboard ? navigator.clipboard.writeText(u) : Promise.reject()).then(() => toast(t('copied'))).catch(() => {}); };
     $('seats').addEventListener('mouseover', e => { const el = e.target.closest('.seat2d'); if (!el || !U.view || e.pointerType === 'touch' || U.view.opts.shared || +el.dataset.i !== U.me) return; const r = el.getBoundingClientRect(); showGun(+el.dataset.i, r.right, r.top + r.height / 2); });
     $('seats').addEventListener('mouseleave', () => hideGun()); $('seats').addEventListener('click', e => { const el = e.target.closest('.seat2d'); if (!el || !U.view || U.view.opts.shared || +el.dataset.i !== U.me) return; const r = el.getBoundingClientRect(); showGun(+el.dataset.i, r.right, r.top + r.height / 2, true); });
@@ -289,7 +296,7 @@
     $('cam-bar').onclick = e => { const b = e.target.closest('button'); if (!b || !U.view) return; const c = b.dataset.cam; U.cam = c === 'side' ? 'side' : 'pov'; if (c !== 'side') U.camSeat = +c; renderGame(U.view); };
     $('btn-music').onclick = () => { Snd.unlock(); Snd.musicToggle(); applyLang(); }; $('btn-sound').onclick = () => { Snd.toggle(); applyLang(); };
     $('btn-3d').onclick = () => { if (!U.d3 && !U.can3d) { toast(no3dReason()); return; } try { localStorage.setItem('sus_3d', U.d3 ? '0' : '1'); } catch (e) {} location.reload(); };
-    document.addEventListener('keydown', e => { if (U.screen !== 'game' || e.target.tagName === 'INPUT') return; if (e.key === 'Enter') doPlay(); else if (e.key.toLowerCase() === 'l') doCall(); else if (e.key.toLowerCase() === 'p' || e.key === ' ') doPull(); else if (e.key === 'Escape') { U.sel.clear(); if (U.view) renderControls(U.view); } });
+    document.addEventListener('keydown', e => { if ($('modal').firstChild) { if (e.key === 'Escape' && $('m-stay')) closeModal(); return; } if (U.screen !== 'game' || e.target.tagName === 'INPUT') return; if (e.key === 'Enter') doPlay(); else if (e.key.toLowerCase() === 'l') doCall(); else if (e.key.toLowerCase() === 'p' || e.key === ' ') doPull(); else if (e.key === 'Escape') { U.sel.clear(); if (U.view) renderControls(U.view); } });
     document.addEventListener('pointerdown', () => Snd.unlock(), { once: true });
   }
   const no3dReason = () => { const e = window.S3D_ERR || (window.S3D && S3D.err && S3D.err()); return t('no3d') + (e ? ' (' + e + ')' : ''); };

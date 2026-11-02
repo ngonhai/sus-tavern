@@ -10,6 +10,8 @@ A Liar's Bar–style bluffing game, built from the Roulette project. Static HTML
 - First-person 3D round table (Three.js, vendored): only your own paws are visible, click your 3D cards to select, press *Play* (or Enter) to play, click your revolver to pull. 2D mode (button in the header) is a full fallback.
 - Style: painted/brushy — toon shading with brush-streak texture and ink outlines on 3D animals, wobbly SVG faces, hand-drawn card glyphs and an SVG "scratch" filter on lettering.
 
+Leaving the table (✕ or "Leave table") asks for confirmation first (Esc = stay).
+
 Keys: Enter = play, L = call liar, P/Space = pull. Tests: `node tests/engine.test.js`.
 Note: the whole game state lives in the room (hands included) — fine for friends, not cheat-proof.
 
