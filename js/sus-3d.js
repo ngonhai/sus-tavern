@@ -252,7 +252,7 @@ const S3D = (function () {
   const texCache = {}; const cardTex = k => texCache[k] || (texCache[k] = (() => { const t = new THREE.CanvasTexture(k === 'back' ? Art.backCanvas() : Art.cardCanvas(k)); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t; })());
   const edgeM = new THREE.MeshToonMaterial({ color: '#eadfc4', gradientMap: gradMap() });
   const faceMats = {}; const cardMat = k => faceMats[k] || (faceMats[k] = [edgeM, edgeM, new THREE.MeshBasicMaterial({ map: cardTex(k) }), new THREE.MeshBasicMaterial({ map: cardTex('back') }), edgeM, edgeM]);
-  function makeCard(c) { const m = new THREE.Mesh(new THREE.BoxGeometry(CW, CT, CH), cardMat(c.k === 'D' ? 'J' : c.k)); m.castShadow = true; m.userData.cardId = c.id; scene.add(m); return { id: c.id, k: c.k, real: c.k, mesh: m, owner: -1, inPile: false, faceUp: false, busy: false }; }
+  function makeCard(c) { const m = new THREE.Mesh(new THREE.BoxGeometry(CW, CT, CH), cardMat(c.k)); m.castShadow = true; m.userData.cardId = c.id; scene.add(m); return { id: c.id, k: c.k, real: c.k, mesh: m, owner: -1, inPile: false, faceUp: false, busy: false }; }
   const pilePose = (idx, faceUp) => ({ pos: V((((idx * 37) % 11) - 5) * .005, TY + .004 + idx * .0045, (((idx * 53) % 11) - 5) * .005), q: new THREE.Quaternion().setFromEuler(new THREE.Euler(faceUp ? 0 : Math.PI, ((idx * 71) % 360) * Math.PI / 180, 0)) });
   function handPose(i, j, cnt, mineHere) {
     const spread = mineHere ? .105 : .06, r = (j - (cnt - 1) / 2) * spread;
@@ -313,7 +313,7 @@ const S3D = (function () {
     const dest = from.clone().addScaledVector(d, .8).add(V(0, .05, 0)); arm.point = true; await Promise.all([gripTo(arm, 1, 160), moveHand(arm, dest, 360, eo)]); await wait(520); await Promise.all([gripTo(arm, 0, 200), moveHand(arm, arm.rest, 360)]); arm.point = false;
   }
   async function reveal(acc, cs) {
-    if (!ok) return; const campos0 = cam.position.clone(), recs = cs.map(c => cards.get(c.id)).filter(Boolean), campos = cam.position.clone(), H = V(0, TY + .12, 0).addScaledVector(V(campos0.x, 0, campos0.z).normalize(), .32); recs.forEach(r => { r.busy = true; r.faceUp = true; if (r.real === 'D') r.mesh.material = cardMat('D'); });
+    if (!ok) return; const campos0 = cam.position.clone(), recs = cs.map(c => cards.get(c.id)).filter(Boolean), campos = cam.position.clone(), H = V(0, TY + .12, 0).addScaledVector(V(campos0.x, 0, campos0.z).normalize(), .32); recs.forEach(r => { r.busy = true; r.faceUp = true; });
     tween(350, e => { tcOff = .12 * e; }, eo); focusOn(V(0, TY + .2, 0), .5, 10, 0);   /* the table card stays visible, lifted above the cards being checked */ const tgt = recs.map((r, i) => { const o = new THREE.Object3D(); o.position.copy(H).add(V((i - (recs.length - 1) / 2) * .14, 0, 0)); o.lookAt(campos); o.rotateX(Math.PI / 2); return o; });
     const from = recs.map(r => r.mesh.position.clone()), qf = recs.map(r => r.mesh.quaternion.clone()); Snd.play('flip');
     await tween(700, u => recs.forEach((r, i) => { r.mesh.position.lerpVectors(from[i], tgt[i].position, u); r.mesh.position.y += Math.sin(u * Math.PI) * .1; r.mesh.quaternion.slerpQuaternions(qf[i], tgt[i].quaternion, u); }), eo);

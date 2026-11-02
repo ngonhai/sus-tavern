@@ -58,4 +58,8 @@ for (let n = 2; n <= 5; n++) for (let s = 0; s < 40; s++) {
   ok(ev.dead && ev.reload && g.gun[0].pos === 0, 'shared gun reloads after a death'); }
 { const g = Sus.newGame(['a', 'b', 'c'], { shared: true }, 12); g.turn = 0; g.target = 'K'; g.hands[0] = [{ id: 901, k: 'A' }]; g.gun[0].pos = 1; g.gun[0].bullet = 5;
   Sus.apply(g, 0, { t: 'play', ids: [901] }); Sus.apply(g, g.turn, { t: 'call' }); Sus.apply(g, 0, { t: 'pull' }); ok(g.gun[0].pos === 2, 'shared gun keeps advancing for everybody'); }
+// shared revolver + Devil: the first death ends the sweep, nobody else pulls this round
+{ const g = Sus.newGame(['a', 'b', 'c', 'd'], { shared: true, devil: true }, 21); g.turn = 0; g.target = 'K'; g.hands[0] = [{ id: 901, k: 'D' }, { id: 902, k: 'K' }]; g.hands[1] = [{ id: 911, k: 'K' }]; g.hands[2] = [{ id: 921, k: 'K' }]; g.hands[3] = [{ id: 931, k: 'K' }];
+  Sus.apply(g, 0, { t: 'play', ids: [901] }); Sus.apply(g, g.turn, { t: 'call' }); ok(g.shooters.length === 3, 'devil: 3 shooters'); const first = g.shooters[0]; g.gun[0].pos = 0; g.gun[0].bullet = 0;
+  Sus.apply(g, first, { t: 'pull' }); ok(!g.alive[first] && g.phase === 'play' && g.alive.filter(Boolean).length === 3, 'shared devil sweep stops at the first death'); }
 if (fails) { console.error(fails + ' failures'); process.exit(1); } else console.log('engine tests passed');

@@ -111,7 +111,7 @@
   }
   function renderHand(g) {
     const box = $('hand'); if (U.spec || !g.alive[U.me]) { box.innerHTML = ''; return; }
-    box.innerHTML = g.hands[U.me].map(c => '<button type="button" class="card' + (U.sel.has(c.id) ? ' sel' : '') + '" data-id="' + c.id + '"><img src="' + curl(c.k === 'D' ? 'J' : c.k) + '" alt="' + (c.k === 'D' ? 'J' : c.k) + '"></button>').join('');
+    box.innerHTML = g.hands[U.me].map(c => '<button type="button" class="card' + (U.sel.has(c.id) ? ' sel' : '') + '" data-id="' + c.id + '"><img src="' + curl(c.k) + '" alt="' + c.k + '"></button>').join('');
   }
   function logHTML(g) {
     const w = i => '<b>' + esc(g.names[i]) + '</b>';
@@ -301,8 +301,14 @@
     U.can3d = !!window.S3D && (U.d3 || S3D.init($('r3d-wrap'))); if (U.d3) { S3().onPick(onPick3); S3().onHover(h => { if (h && h.type === 'gun') showGun(h.p, h.x, h.y); else hideGun(); }); S3().start(); }
     wire(); Net.onChange(onRoom); applyLang();
     const q = new URLSearchParams(location.search).get('room'); const last = Net.lastRoom();
-    showLobby(); if (q) { $('tab-btn-join').click(); $('input-room-code').value = q.toUpperCase(); }
-    else if (last && Net.ONLINE_OK) { const c = await Net.tryRejoin(last).catch(() => null); if (!c) { /* stay in lobby */ } }
+    if (q) { showLobby(); $('tab-btn-join').click(); $('input-room-code').value = q.toUpperCase(); return; }
+    // refresh while seated at a table / in a running game: keep the loading screen up (never flash the lobby) and go straight back to that state
+    if (Net.hasLocal() && Net.restoreLocal()) return;
+    if (last && Net.ONLINE_OK) {
+      let c = null; try { c = await Promise.race([Net.tryRejoin(last), new Promise(res => setTimeout(() => res(null), 7000))]); } catch (e) { c = null; }
+      if (c) return;                                   // onRoom() shows the waiting room / the game as soon as the room data arrives
+    }
+    showLobby();
   }
   // the module script (3D) loads deferred: wait for it (or its failure) before booting
   function ready() { if (window.S3D || window.S3D_ERR || document.readyState === 'complete') boot(); else setTimeout(ready, 40); }
