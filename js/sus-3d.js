@@ -320,7 +320,7 @@ const S3D = (function () {
     await wait(1300); recs.forEach(r => { r.busy = false; }); tween(350, e => { tcOff = .12 * (1 - e); }, eo);
   }
   function focusOn(pt, k, fov, dolly) { cine.focus.copy(pt); cineTo('k', k, 500); cineTo('fov', -fov, 600); cineTo('dolly', dolly || 0, 600); document.body.classList.add('cine'); }
-  function unfocus() { cineTo('k', 0, 700); cineTo('fov', 0, 700); cineTo('dolly', 0, 700); document.body.classList.remove('cine'); }
+  function unfocus() { if (cine.k < .001 && !cine.fov && !cine.dolly && !document.body.classList.contains('cine')) return; cineTo('k', 0, 700); cineTo('fov', 0, 700); cineTo('dolly', 0, 700); document.body.classList.remove('cine'); }
   // shared revolver: slide the gun across the table to the player who has to shoot (called as soon as it is known, before the trigger is pulled)
   let slideP = Promise.resolve();
   const passGun = p => (slideP = slideP.then(() => passGun1(p)));   // slides are queued, never concurrent
@@ -395,7 +395,7 @@ const S3D = (function () {
   function say(s, text, name, col, ms) {
     const P = players[s]; if (!ok || !P || P.dead) return;
     for (let i = boards.length - 1; i >= 0; i--) if (boards[i].s === s) dropBoard(i);
-    const W = 640, pad = 30, fs = 38, lh = 48, nf = 30, font = '"Be Vietnam Pro", system-ui, sans-serif', c = document.createElement('canvas'), x = c.getContext('2d');
+    const W = 560, pad = 26, fs = 40, lh = 50, nf = 30, font = '"Be Vietnam Pro", system-ui, sans-serif', c = document.createElement('canvas'), x = c.getContext('2d');
     x.font = '700 ' + fs + 'px ' + font; const lines = []; let ln = '';
     String(text).split(' ').forEach(w => { const t = ln ? ln + ' ' + w : w; if (ln && x.measureText(t).width > W - pad * 2) { lines.push(ln); ln = w; } else ln = t; }); if (ln) lines.push(ln);
     const bodyH = pad + nf + 10 + lines.length * lh + pad * .5, H = Math.ceil(bodyH + 32); c.width = W; c.height = H;                  // resizing resets the context
@@ -405,7 +405,7 @@ const S3D = (function () {
     x.textAlign = 'left'; x.textBaseline = 'top'; x.font = '800 ' + nf + 'px ' + font; x.fillStyle = col || '#ffb547'; x.strokeStyle = '#2a1a14'; x.lineWidth = 5; x.strokeText(name || '', pad, pad - 2); x.fillText(name || '', pad, pad - 2);
     x.font = '700 ' + fs + 'px ' + font; x.fillStyle = '#2a1a14'; lines.forEach((l, i) => x.fillText(l, pad, pad + nf + 10 + i * lh));
     const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 4;
-    const ww = .7, wh = ww * H / W, mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: 0, depthTest: false, depthWrite: false, toneMapped: false });
+    const ww = .5, wh = ww * H / W, mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: 0, depthTest: false, depthWrite: false, toneMapped: false });
     const mesh = new THREE.Mesh(new THREE.PlaneGeometry(ww, wh), mat); mesh.position.y = wh / 2; mesh.renderOrder = 20;
     const grp = new THREE.Group(); grp.rotation.order = 'YXZ'; grp.add(mesh); scene.add(grp); boards.push({ s, grp, mesh, mat, tex, ww, wh, cur: null, t0: performance.now(), last: performance.now(), ms: ms || 3500 });
   }
@@ -417,10 +417,10 @@ const S3D = (function () {
       const b = boards[i], P = players[b.s], age = now - b.t0, dt = Math.min(.1, Math.max(0, (now - b.last) / 1000)); b.last = now; if (!P || P.dead || age > b.ms) { dropBoard(i); continue; }
       const hd = P.head.getWorldPosition(V(0, 0, 0)), hr = headR[P.char] * SP[P.char].head, base = V(hd.x, hd.y + hr + .08, hd.z);
       const dep = Math.max(.5, base.clone().sub(cam.position).dot(fw)), hh = th * dep, hw = hh * asp;
-      const want = Math.min(.9, .5 * Math.max(1, 1.5 / asp)), sc = Math.max(.5, Math.min(3, want * hw / b.ww)), bw = sc * b.ww / hw / 2, bh = sc * b.wh / hh;              // half-width / height of the board in screen units (-1..1)
-      const a = base.clone().project(cam); let nx = a.x, ny = a.y;
-      if (ny + bh > .8) { ny = .8 - bh; nx = a.x + (a.x > 0 ? -1 : 1) * (bw + hr / hw + .03); }                     // too high: drop down, and step aside so it does not cover the face
-      nx = Math.max(-.97 + bw, Math.min(.97 - bw, nx)); ny = Math.max(-.5, Math.min(.8 - bh, ny));
+      const want = Math.min(.8, .34 * Math.max(1, 1.5 / asp)), sc0 = Math.max(.35, Math.min(3, want * hw / b.ww));        // small: about a sixth of the screen width (wider on a portrait phone)
+      const a = base.clone().project(cam), room = .86 - a.y; let sc = sc0, bh = sc * b.wh / hh;
+      if (bh > room) { sc = Math.max(.85 * sc0, sc0 * room / bh); bh = sc * b.wh / hh; }                           // little space above the head: shrink a bit, but stay right on top of the head
+      const bw = sc * b.ww / hw / 2; let nx = Math.max(-.97 + bw, Math.min(.97 - bw, a.x)), ny = Math.min(a.y, .86 - bh);       // and if it still does not fit, slide down over the hair, never beside or in front of the face
       const tgt = base.clone().addScaledVector(rt, (nx - a.x) * hw).addScaledVector(upv, (ny - a.y) * hh);
       if (!b.cur) b.cur = tgt.clone(); else b.cur.lerp(tgt, 1 - Math.exp(-dt * 12)); b.grp.position.copy(b.cur);
       const toCam = Math.atan2(cam.position.x - b.cur.x, cam.position.z - b.cur.z), toMid = Math.atan2(-base.x, -base.z);
@@ -487,6 +487,6 @@ const S3D = (function () {
   }
   function start() { if (!ok || running) return; running = true; resize(); lastT = performance.now(); raf = requestAnimationFrame(frame); }
   function stop() { running = false; cancelAnimationFrame(raf); clearInterval(hidT); }
-  return { passGun, dbg: () => guns.map(g => [g.position.x, g.position.y, g.position.z, !!g.userData.held]), err: () => lastErr, init, setup, sync, start, stop, setView, setSelected, setExpr, say, deal, playCards, shout, reveal, pullStart, pullEnd, slam, point, onPick: f => { cb.pick = f; }, onHover: f => { cb.hover = f; }, isOk: () => ok };
+  return { passGun, dbg: () => guns.map(g => [g.position.x, g.position.y, g.position.z, !!g.userData.held]), err: () => lastErr, init, setup, sync, start, stop, setView, setSelected, setExpr, say, deal, playCards, shout, reveal, pullStart, pullEnd, unfocus, slam, point, onPick: f => { cb.pick = f; }, onHover: f => { cb.hover = f; }, isOk: () => ok };
 })();
 window.S3D = S3D;

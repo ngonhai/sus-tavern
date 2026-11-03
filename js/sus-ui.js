@@ -83,17 +83,30 @@
       if (U.d3) S3().setup({ g, me: U.me, view: U.spec && U.cam === 'side' ? 'side' : U.me });
       renderGame(g); afterIdle(); return;
     }
-    if (g.seq > U.view.seq) { U.queue.push(g); U.pending = false; runQueue(); return; }
+    if (g.seq > U.view.seq) {
+      if (!U.busy && !U.queue.length && g.seq === U.view.seq + 1 && g.ev.length === 1 && g.ev[0].t === 'talk') { showTalk(g.ev[0], g); U.view = g; return; }
+      U.queue.push(g); U.pending = false; runQueue(); return;
+    }
     if (!U.busy) { U.view = g; renderGame(g); refreshLeave(); }
+  }
+  // a bot comment: 2D a bubble over the avatar (flips below it near the top); 3D a small board above the head. It does not block anything.
+  function showTalk(e, g) {
+    const arr = t('talk')[e.n ? 'acc' : 'accNo'], text = arr[e.v % arr.length].replace(/\{(\w+)\}/g, (x, w) => w === 'n' ? e.n : w === 'to' ? g.names[e.about] : w === 'c' ? t('cardShort')[g.target] : x), ms = reduce() ? 3000 : 4200 + text.length * 25;
+    if (U.d3) S3().say(e.by, text, g.names[e.by], SEATCOL[e.by % SEATCOL.length], ms);
+    else { const el = $('say-' + e.by); if (el) { el.classList.toggle('below', el.parentElement.getBoundingClientRect().top < 150); bubble(e.by, text, ms, 'talk'); } }
+    setExpr(e.by, 'smug', 1800); Snd.play('select');
   }
   async function runQueue() {
     if (U.busy) return; U.busy = true; renderControls(U.view);
     while (U.queue.length) {
-      const g = U.queue.shift(), before = U.view; if (g.seq <= before.seq) continue; closeModalSoft();
+      const g = U.queue.shift(), before = U.view; if (g.seq <= before.seq) continue;
+      if (g.seq === before.seq + 1 && g.ev.length === 1 && g.ev[0].t === 'talk') { showTalk(g.ev[0], g); U.view = g; continue; }
+      closeModalSoft();
       try { await animate(g, before); } catch (e) { console.error(e); }
       U.view = g; renderGame(g); refreshLeave();
     }
-    U.busy = false; renderControls(U.view); afterIdle();
+    U.busy = false; if (U.d3 && U.view.phase !== 'trigger') S3().unfocus();      // safety net: never leave the cinematic zoom + bars up when nothing else will end it
+    renderControls(U.view); afterIdle();
   }
 
   // ---------------------------------------------------------------- rendering ----
@@ -186,12 +199,7 @@
         U.claim = t('claims', { n: nm(e.by), k: e.n, c: t('cardName')[g.target] }).replace(/<[^>]+>/g, ''); Snd.play('card'); bubble(e.by, t('claims', { n: '', k: e.n, c: t('cardShort')[g.target] }).trim(), 1600); setExpr(e.by, 'smug', 900);
         if (U.d3) await S3().playCards(e.by, e.ids, e.n); else await flyCards(e.by, e.n); const c = $('center'); if (c) { const cl = c.querySelector('.claim-big'); if (cl) cl.textContent = U.claim; } await sleep(260); break;
       }
-      case 'talk': {                       // 2D: a bubble over the avatar; 3D: a board above the head that follows the camera
-        const arr = t('talk')[e.n ? 'acc' : 'accNo'], text = arr[e.v % arr.length].replace(/\{(\w+)\}/g, (x, w) => w === 'n' ? e.n : w === 'to' ? g.names[e.about] : w === 'c' ? t('cardShort')[g.target] : x), ms = reduce() ? 3000 : 4200 + text.length * 25;
-        if (U.d3) S3().say(e.by, text, g.names[e.by], SEATCOL[e.by % SEATCOL.length], ms);
-        else { const el = $('say-' + e.by); if (el) { el.classList.toggle('below', el.parentElement.getBoundingClientRect().top < 150); bubble(e.by, text, ms, 'talk'); } }
-        setExpr(e.by, 'smug', 1800); Snd.play('select'); await sleep(reduce() ? 900 : 2300); break;
-      }
+      case 'talk': showTalk(e, g); break;       // never waits: the buttons stay usable while a bot talks
       case 'call': {
         if (e.auto) { say(t('autoReveal', { n: nm(e.acc) }), 'warn'); setExpr(e.acc, 'scared', 2000); await sleep(900); }
         else {
@@ -204,6 +212,7 @@
         if (U.d3 && e.shooters && e.shooters.length) S3().passGun(e.shooters[0]);   // shared revolver: it only slides to the shooter once the verdict (truth / lie) is announced
         if (e.devil) { Snd.play('devil'); say(t('devilT', { n: nm(e.acc) }), 'bad'); flashScreen('#7a0a22'); shake(); setExpr(e.acc, 'hurt', 1800); await sleep(1500); }
         else { say(e.honest ? (e.auto ? t('autoSafe', { n: nm(e.acc) }) : tr('honestT', { n: nm(e.acc), m: nm(e.loser) })) : tr('liarT', { n: nm(e.acc) }), e.honest ? 'good' : 'bad'); setExpr(e.acc, e.honest ? 'smug' : 'hurt', 1600); if (e.honest && !e.auto) setExpr(e.by, 'scared', 1600); await sleep(e.auto && e.honest ? 1700 : 1300); }
+        if (U.d3 && !(e.shooters && e.shooters.length)) S3().unfocus();       // nobody shoots: give the camera back now
         break;
       }
       case 'pull': {
