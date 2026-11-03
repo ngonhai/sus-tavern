@@ -109,52 +109,36 @@ for (let n = 2; n <= 5; n++) for (let s = 0; s < 40; s++) {
     Sus.apply(g, 0, { t: 'play', ids: [901, 902, 903] }); const a = Sus.bot(g, 1); if (a.t === 'call') continue; Sus.apply(g, 1, a); if (Sus.actor(g) !== 0) continue;
     Sus.apply(g, 0, { t: 'play', ids: [904] }); if (Sus.actor(g) !== 1) continue; ign++; if (Sus.bot(g, 1).t === 'call') called++; }
   ok(ign > 100 && called <= ign * .15, 'hard bot is not baited by 3 fakes + 1 real (' + called + '/' + ign + ' calls)'); }
-
-// ---- hard bot table talk ----
-{ const mkRand = seed => { let r = seed >>> 0; return () => { r = (r * 1664525 + 1013904223) >>> 0; return r / 4294967296; }; };
-  let trustCases = 0, trustMono = 0, trustUp = 0, talks = 0, bluffs = 0, accs = 0, peeked = 0, checked = 0, bad = 0, gate = 0, cool = 0, boosted = 0, mono = 0, cases = 0;
-  const kinds = {};
-  for (const devil of [false, true]) for (let n = 2; n <= 5; n++) for (let sd = 0; sd < 30; sd++) {
-    const g = Sus.newGame(Array.from({ length: n }, (_, i) => 'P' + i), { devil, botLevel: 2 }, 6000 + sd * 17 + n); let steps = 0; const ctx = { says: [], last: {} };
-    while (g.phase !== 'over' && steps++ < 500) {
-      const a = Sus.actor(g);
-      if (g.phase === 'play' && g.last) {
-        for (let p = 0; p < n; p++) {
-          if (!g.alive[p]) continue;
-          const m = Sus.botTalk(g, p, { rand: mkRand(steps * 31 + p), last: ctx.last, says: ctx.says });
-          if (p === a) { if (m) bad++; continue; }                                                   // the player about to decide never talks
-          const lo = JSON.parse(JSON.stringify(g)); lo.opts.botLevel = 1; if (Sus.botTalk(lo, p, { rand: mkRand(1) })) gate++;   // only hard bots talk
-          if (!m) continue;
-          talks++; kinds[m.k] = (kinds[m.k] || 0) + 1; if (m.lie) bluffs++; if (m.k === 'acc') accs++;
-          const per = Math.max(6, Math.ceil(n * 5 / 3)), GT = g.opts.joker ? per + 2 : per, mine = g.plays.filter(x => x.by === p).reduce((q, x) => q + x.ids.length, 0);
-          if ((m.k === 'acc' || m.k === 'hand') && (m.n > g.hands[p].length || m.n > GT - mine || m.n < 0 || (m.n > 0 && m.n < 2))) bad++;      // a stated count of table cards must be possible
-          if (m.k !== 'acc' || m.to !== g.last.by || m.p !== p || p === g.last.by) bad++;                         // only accusations, aimed at the last player
-          if (!m.lie && m.k === 'acc' && m.n > 0 && m.n !== g.hands[p].filter(c => c.k === g.target || c.k === 'J').length) bad++;   // an honest count is the real one
-          // never peeks: scramble what p cannot see, same random numbers -> same line
-          const sc = JSON.parse(JSON.stringify(g)), ks = devil ? ['A', 'K', 'Q', 'D'] : ['A', 'K', 'Q'], mineIds = new Set(); sc.plays.forEach(x => { if (x.by === p) x.ids.forEach(id => mineIds.add(id)); });
-          sc.hands.forEach((h, j) => { if (j !== p) h.forEach(c => { c.k = ks[(c.id * 7 + steps) % ks.length]; }); });
-          sc.pile.forEach(c => { if (!mineIds.has(c.id)) c.k = ks[(c.id * 5 + steps) % ks.length]; }); sc.last.cards = sc.last.cards.map(c => sc.pile.find(x => x.id === c.id) || c);
-          const m2 = Sus.botTalk(sc, p, { rand: mkRand(steps * 31 + p), last: ctx.last, says: ctx.says }); checked++; if (p !== g.last.by && JSON.stringify(m2) !== JSON.stringify(m)) peeked++;
-          if (p === g.last.by) continue;
-          ctx.last[p] = g.seq; if (Sus.botTalk(g, p, { rand: () => 0, last: ctx.last, says: [] })) cool++;                // cooldown: not again right away
-          ctx.says.push({ by: p, k: m.k, to: m.to, n: m.n, round: g.round }); break;
-        }
-        // what the other bots hear moves them the right way (never less suspicious), and an impossible count is ignored
-        const q = [...Array(n).keys()].find(j => j !== a && j !== g.last.by && g.alive[j] && g.hands[j].length >= 3);
-        if (q != null && a !== g.last.by) { const s0 = Sus.suspicion2(g, a, null).lie, s1 = Sus.suspicion2(g, a, { says: [{ by: q, k: 'acc', to: g.last.by, n: 3, round: g.round }] }).lie, s2 = Sus.suspicion2(g, a, { says: [{ by: q, k: 'acc', to: g.last.by, n: 9, round: g.round }] }).lie;
-          cases++; if (s1 >= s0 - 1e-9) mono++; if (s1 > s0 + 1e-6) boosted++; if (s2 !== s0) bad++;
-          // credibility: a speaker whose past accusations were checked and proven right is believed more than one proven wrong
-          const R0 = 900, z = [...Array(n).keys()].find(j => j !== g.last.by && j !== q), mk = right => { const h = JSON.parse(JSON.stringify(g)); for (let i = 0; i < 3; i++) { h.log.push({ t: 'play', by: z, n: 1, r: R0 + i }); h.log.push({ t: 'call', by: a, acc: z, honest: !right, devil: false, auto: false, r: R0 + i }); } return h; };   // past accusations were about z, so only the speaker's record differs
-          const past = [0, 1, 2].map(i => ({ by: q, k: 'acc', to: z, n: 3, round: R0 + i, np: 1 })), cur = { by: q, k: 'acc', to: g.last.by, n: 3, round: g.round };
-          const sR = Sus.suspicion2(mk(true), a, { says: past.concat(cur) }).lie, sW = Sus.suspicion2(mk(false), a, { says: past.concat(cur) }).lie; trustCases++; if (sR >= sW - 1e-9) trustMono++; if (sR > sW + 1e-6) trustUp++; }
-      }
-      if (!Sus.apply(g, a, Sus.bot(g, a, ctx))) { ok(false, 'bot with talk context illegal'); break; }
-    }
-  }
-  console.log('talk lines', talks, 'kinds', JSON.stringify(kinds), 'bluffs', bluffs, '| listening: raised suspicion in', boosted, 'of', cases);
-  ok(talks > 300, 'hard bots do talk, and only accuse (' + talks + ')'); ok(bad === 0, 'every line is legal: possible counts, right targets, honest counts are real (' + bad + ' bad)');
-  ok(gate === 0, 'easy/normal bots never talk'); ok(peeked === 0 && checked > 300, 'talk never depends on hidden cards (' + peeked + '/' + checked + ')'); ok(cool === 0, 'a bot does not talk twice in a row');
-  ok(bluffs > accs * .1 && bluffs < talks * .6, 'some of the lines are bluffs, not most (' + bluffs + ' of ' + talks + ')');
-  ok(trustMono === trustCases && trustUp > trustCases * .3, 'a speaker who was proven right is believed more than one proven wrong (' + trustUp + '/' + trustCases + ')');
-  ok(mono === cases && boosted > cases * .3, 'a believable claim of table cards makes the other bots more suspicious (' + boosted + '/' + cases + ')'); }
+// table talk: a bystander may comment on the last play; it never changes whose turn it is, and a hard bot weighs what it hears
+{ const mk = () => { const g = Sus.newGame(['a', 'b', 'c', 'd'], { botLevel: 2 }, 31); g.turn = 0; g.target = 'K'; g.hands = [[1, 2, 3, 4, 5].map(i => ({ id: 100 + i, k: 'K' })), [1, 2, 3, 4, 5].map(i => ({ id: 200 + i, k: 'Q' })), [1, 2, 3, 4, 5].map(i => ({ id: 300 + i, k: 'A' })), [1, 2, 3, 4, 5].map(i => ({ id: 400 + i, k: 'K' }))]; return g; };
+  const g = mk(); ok(!Sus.apply(g, 2, { t: 'talk', k: 'doubt', n: 1 }), 'talk before any play is illegal');
+  Sus.apply(g, 0, { t: 'play', ids: [101, 102, 103] }); const turn = g.turn, seq = g.seq;
+  ok(!Sus.apply(g, 0, { t: 'talk', k: 'doubt', n: 1 }), 'the player who just played cannot talk about itself'); ok(!Sus.apply(g, g.turn, { t: 'talk', k: 'doubt', n: 1 }), 'the player who must decide cannot talk');
+  ok(!Sus.apply(g, 2, { t: 'talk', k: 'trust', n: 1 }) && !Sus.apply(g, 2, { t: 'talk', k: 'doubt', n: 9 }), 'only an accusation with a possible card count is accepted'); ok(g.seq === seq, 'rejected talk leaves the state alone');
+  ok(Sus.apply(g, 2, { t: 'talk', k: 'doubt', n: 4 }) && g.turn === turn && g.phase === 'play' && g.ev[0].t === 'talk' && g.talk.length === 1, 'talk accepted, turn unchanged');
+  ok(!Sus.apply(g, 2, { t: 'talk', k: 'doubt', n: 1 }), 'one comment per speaker per play'); ok(Sus.apply(g, 3, { t: 'talk', k: 'doubt', n: 2 }) && !Sus.apply(g, g.turn === 1 ? 0 : 1, { t: 'talk', k: 'doubt', n: 1 }), 'at most two comments per play');
+  Sus.apply(g, 1, { t: 'play', ids: [201] }); ok(g.talk.every(x => x.at === 1) && g.last.by === 1, 'talk is tied to the play it commented on'); }
+{ // a believable "I hold lots of the table card" makes the hard bot more suspicious; an impossible one is ignored
+  const mk = () => { const g = Sus.newGame(['a', 'b', 'c', 'd'], { botLevel: 2 }, 33); g.turn = 1; g.target = 'K'; g.hands = [[], [1, 2, 3, 4, 5].map(i => ({ id: 200 + i, k: 'Q' })), [1, 2, 3, 4, 5].map(i => ({ id: 300 + i, k: 'A' })), [1, 2, 3, 4, 5].map(i => ({ id: 400 + i, k: 'A' }))]; g.pile = [{ id: 901, k: 'Q' }]; g.plays = [{ by: 0, ids: [901] }]; g.last = { by: 0, n: 1, cards: g.pile.slice() }; g.talk = []; return g; };
+  const none = Sus.suspicion2(mk(), 1).lie, g2 = mk(); g2.talk = [{ by: 2, about: 0, k: 'doubt', n: 5, at: 1 }]; const heard = Sus.suspicion2(g2, 1).lie;
+  const g3 = mk(); g3.hands[2] = g3.hands[2].slice(0, 2); g3.talk = [{ by: 2, about: 0, k: 'doubt', n: 5, at: 1 }]; ok(heard > none, 'a believable claim raises suspicion (' + none.toFixed(2) + ' -> ' + heard.toFixed(2) + ')'); ok(Math.abs(Sus.suspicion2(g3, 1).lie - none) < 1e-9, 'a claim bigger than the speaker\'s hand is ignored'); }
+{ // the round ledger: a comment is a public commitment that the speaker's own later plays are measured against
+  const mk = (claims) => { const g = Sus.newGame(['a', 'b', 'c', 'd'], { botLevel: 2 }, 35); g.turn = 1; g.target = 'K'; g.hands = [[{ id: 1, k: 'A' }, { id: 2, k: 'A' }], [1, 2, 3, 4, 5].map(i => ({ id: 200 + i, k: 'Q' })), [1, 2, 3, 4, 5].map(i => ({ id: 300 + i, k: 'A' })), [1, 2, 3, 4, 5].map(i => ({ id: 400 + i, k: 'A' }))];
+    g.pile = [901, 902, 903].map(id => ({ id, k: 'Q' })); g.plays = [{ by: 0, ids: [901, 902, 903] }]; g.last = { by: 0, n: 3, cards: g.pile.slice() }; g.talk = claims.map(c => Object.assign({ by: 0, about: 3, k: 'doubt', at: 0, h: 5, ci: 0 }, c)); return g; };
+  const none = Sus.suspicion2(mk([]), 1).lie, weak = Sus.suspicion2(mk([{ n: 1 }]), 1).lie, strong = Sus.suspicion2(mk([{ n: 3 }]), 1).lie;
+  ok(weak > strong, 'accused said "I hold 1" then plays 3: far more suspicious than if it had said "I hold 3" (' + weak.toFixed(2) + ' vs ' + strong.toFixed(2) + ', none ' + none.toFixed(2) + ')'); ok(weak > .75, 'saying 1 and then claiming 3 is very likely a lie'); ok(strong < none, 'a believable claim of a strong hand covers its 3-card play');
+  const conflict = Sus.suspicion2(mk([{ n: 3, h: 5 }, { n: 5, h: 4 }]), 1).lie; ok(conflict > strong, 'a speaker whose two comments cannot both be true is believed less'); }
+{ // a bystander only speaks to push the decider into doubting; it points at real cards when it believes the accusation, never speaks when the play may hide the Devil
+  const mk = (devil, bystander) => { const g = Sus.newGame(['a', 'b', 'c', 'd'], { botLevel: 2, devil }, 41); g.turn = 1; g.target = 'K'; g.hands[0] = [{ id: 1, k: 'Q' }]; g.pile = [{ id: 1, k: 'Q' }, { id: 2, k: 'Q' }, { id: 3, k: 'Q' }]; g.plays = [{ by: 0, ids: [1, 2, 3] }]; g.last = { by: 0, n: 3, cards: g.pile.slice() }; g.talk = []; g.hands[3] = bystander; return g; };
+  const K = i => ({ id: 10 + i, k: 'K' }), Qq = i => ({ id: 20 + i, k: 'Q' }); Sus.HB.talk = 1; Sus.HB.talkLie = 1;
+  const strong = Sus.botTalk(mk(false, [K(1), K(2), K(3), Qq(1), Qq(2)]), 3); ok(strong && strong.k === 'doubt' && strong.n === 3, 'it believes the accusation and points at its 3 real cards: ' + JSON.stringify(strong));
+  const weak = Sus.botTalk(mk(false, [Qq(1), Qq(2), Qq(3), Qq(4), Qq(5)]), 3); ok(!weak || (weak.k === 'doubt' && (weak.n === 0 || weak.n >= 2) && weak.v >= 0 && weak.v < 1000), 'a weak hand makes a plain accusation or bluffs a fatter hand (>= 2 cards), and never confesses a count of 1: ' + JSON.stringify(weak));
+  { const g = mk(false, [Qq(1), Qq(2), Qq(3), Qq(4), Qq(5)]); const none = Sus.suspicion2(g, 1).lie; g.talk = [{ by: 3, about: 0, k: 'doubt', n: 0, at: 1, h: 5, ci: 0 }]; ok(Math.abs(Sus.suspicion2(g, 1).lie - none) < 1e-9, 'a plain accusation (no count) claims nothing about a hand, so it moves nobody'); }
+  let quiet = 0, said = 0; for (let sd = 0; sd < 60; sd++) { const g = mk(true, [K(1), K(2), K(3), Qq(1), Qq(2)]); g.rs = sd * 7919; g.pile = [{ id: 1, k: 'Q' }]; g.plays = [{ by: 0, ids: [1] }]; g.last = { by: 0, n: 1, cards: g.pile.slice() }; const t = Sus.botTalk(g, 3); if (t) said++; else quiet++; } ok(quiet + said === 60, 'devil table: botTalk is safe to call');
+  const sw = Sus.suspicion2(mk(true, [K(1), K(2), K(3), Qq(1), Qq(2)]), 3); ok(sw.pD >= 0, 'pD is computed'); Sus.HB.talk = .5; Sus.HB.talkLie = .5; }
+for (const devil of [false, true]) for (let sd = 0; sd < 30; sd++) { // whole games with the bots chatting between plays
+  const g = Sus.newGame(['a', 'b', 'c', 'd'], { botLevel: 2, devil }, 500 + sd); let steps = 0, talks = 0;
+  while (g.phase !== 'over' && steps++ < 4000) { const p = Sus.actor(g); if (g.phase === 'play' && g.last && !(g.talk || []).some(x => x.at === g.plays.length)) { const c = Sus.aliveList(g).filter(j => j !== g.last.by && j !== p)[0]; const ta = c != null && Sus.botTalk(g, c); if (ta) { ok(Sus.apply(g, c, ta), 'botTalk is always legal ' + JSON.stringify(ta)); talks++; } }
+    if (!Sus.apply(g, p, Sus.bot(g, p))) { ok(false, 'bot illegal while chatting'); break; } }
+  ok(g.phase === 'over', 'chatting game ends'); }
 if (fails) { console.error(fails + ' failures'); process.exit(1); } else console.log('engine tests passed');

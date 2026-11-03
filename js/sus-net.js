@@ -159,8 +159,6 @@ const Net = (function () {
     r.gs = JSON.stringify(makeGame(seatEntries(r).filter(e => S.mode === 'local' || r.seats[e.key].connected !== false), r.settings, r.sign)); return r;
   });
   function emote(kind) { if (S.mode === 'online' && S.ref && mySeat()) S.ref.child('emote').set({ key: mySeat(), k: kind, ts: Date.now() + Math.random() }).catch(() => {}); }
-  // bot table talk (hard bots): ONLY the host sends, as a tiny separate node (like emote) — never inside the big game string, so no transaction and no extra state size
-  function say(key, m) { if (S.mode !== 'online' || !S.ref || !S.room || S.room.hostUid !== MY_UID) return null; const ts = Date.now() + Math.random(); S.ref.child('chat').set({ key, m, ts }).catch(() => {}); return ts; }
   function leave() {
     if (S.mode === 'online' && S.room) {
       const k = mySeat();
@@ -174,7 +172,7 @@ const Net = (function () {
   }
 
   return {
-    MY_UID, ONLINE_OK, S, getG, mySeat, isSpec: () => isSpec(S.room), specCount: () => S.room ? Object.keys(S.room.specs || {}).length : 0, isHost, createOnline, joinOnline, tryRejoin, startLocal, addBot, removeBot, setChar, restoreLocal, hasLocal, lastRoom, setSetting, startOnline, emote, say, act, rematch, leave, SEATK, seatEntries,
+    MY_UID, ONLINE_OK, S, getG, mySeat, isSpec: () => isSpec(S.room), specCount: () => S.room ? Object.keys(S.room.specs || {}).length : 0, isHost, createOnline, joinOnline, tryRejoin, startLocal, addBot, removeBot, setChar, restoreLocal, hasLocal, lastRoom, setSetting, startOnline, emote, act, rematch, leave, SEATK, seatEntries,
     room: () => S.room, mode: () => S.mode, code: () => S.code, onChange: f => { S.onChange = f; }
   };
 })();

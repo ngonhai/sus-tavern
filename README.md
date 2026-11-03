@@ -35,9 +35,14 @@ Players with no cards are skipped. When nobody else holds a card, the last play 
 - Both bots judge only the LAST play (the one a call would flip): earlier plays of the same player this round may have been unchecked lies, so they are not added up as if true (the old bots could be baited by 3 fake cards followed by 1 real card).
 
 ## Bot table talk (Hard bots only)
-A hard bot speaks only to make the player about to decide doubt the play before it and shout "Liar!": it accuses the last player, usually quoting how many table cards it holds — *"Tester is lying! I'm holding 3 Aces."* The tip is honest when the bot really believes the claim is a lie (its real count is quoted if it is ≥ 2); otherwise it may **bluff** with a made-up but possible count (never more than it holds / the deck has), hoping the next player calls wrongly. The player who just played and the one about to decide never speak. About 0.2–0.4 lines per round; roughly 20–35% of the accusations are bluffs.
-- The bot that has to decide weighs two sources: the player before it (its own estimate: claim size, bluff history, unseen cards) and what others whisper. A whisper is blended in with the SPEAKER'S CREDIBILITY (`HB.trustMin..trustMax`, prior 0.3): accusations of that speaker that were later checked (the accused play got called) count as right (it was a lie) or wrong (it was honest). Impossible counts (more than the speaker holds) are ignored.
-- Engine: `Sus.botTalk(g, p, ctx)` -> `{k:'acc', p, to, n, v}` (+ `lie`, tests only) and `Sus.bot(g, p, ctx)` take `ctx = {says, last}`, kept in the host's memory, not in the game state. Never peeks (tests scramble hidden cards).
-- Online: only the HOST decides and sends, as a ~50-byte node `rooms/sus_<CODE>/chat` (like `emote`, not inside the game string, no transaction). Clients render it in their own language (`talk` in i18n.js). Local mode touches no network.
-- 2D: a speech bubble over the speaker's avatar (below the seat for seats at the top edge). 3D: `S3D.say(seat, text, name, color, ms)` draws a flat board above the speaker's head that stays parallel to the player's camera with a small swing as the camera pans, scaled by distance and kept inside the view.
-- A bot that is about to move waits for the line before it decides.
+
+A hard bot speaks only to make the player who has to decide doubt the play before it and shout "Liar!". Two kinds of line (quotes in `i18n.js` → `talk.acc` / `talk.accNo`, both languages):
+
+- **acc** — quotes how many table cards it holds ("Tao giữ 3 lá K rồi, {to} đánh thật sao nổi?"). Used when it believes the accusation and really holds ≥ 2 table cards, or as a **bluff** with a made-up but possible count (≥ 2, never more than its hand).
+- **accNo** — a plain accusation with no count ("Nhìn mặt {to} là biết đang lừa rồi."). Used when it believes the accusation but holds a weak hand (saying "I hold 1" would only advertise weakness), or as pure pressure.
+
+It stays quiet when the play may hide the Devil (a call would make the bystander shoot too). The speaker and the player who just played never overlap; at most one line per play.
+
+- The line is a normal game action (`{t:'talk', k:'doubt', n, v}`), so it is in the same room write as any move and every client shows the same variant (`v`). A talk never changes whose turn it is.
+- The decider (a hard bot) weighs the player before it (claim size, bluff history, unseen cards) against what the speakers say. A count is trusted only partly (`HB.hear`), less if it is impossible, contradicts the speaker's other lines or its own later plays, or the counts together exceed the cards that exist. A plain accusation moves nobody. See the "round ledger" comments in `sus-engine.js`.
+- 2D: a bubble over the avatar (flips below it when the avatar is near the top). 3D: a flat board above the head with the speaker's name; it follows the camera, keeps a slight angle toward the table, scales with distance and is kept inside the view (drops down and steps aside when the animal sits high on screen).
