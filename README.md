@@ -33,9 +33,3 @@ Players with no cards are skipped. When nobody else holds a card, the last play 
 - **Hard (2)**: like a careful human — hypergeometric model of the unseen table cards, weighs the real danger of the guns before calling, uses the Devil as a free lie / sweep, bluffs sparingly.
 - Normal and Hard never peek at hidden cards (tests scramble them and check the same move is chosen). In 2v2 duels Hard beats Normal ~75–80% and Normal beats Easy ~90%.
 - Both bots judge only the LAST play (the one a call would flip): earlier plays of the same player this round may have been unchecked lies, so they are not added up as if true (the old bots could be baited by 3 fake cards followed by 1 real card).
-
-## Bot table talk (Hard bots only)
-Hard bots chat during the game, with a purpose: after a play, the last player may reassure or dare ("go on, call me"), and another bot (not the one about to decide) may accuse him or announce its hand — e.g. *"Tester is lying! I'm holding 3 Aces."* The tip is honest when the bot really believes the claim is a lie (its real count of table cards is quoted if it is ≥ 2); otherwise it may **bluff** with a made-up but possible count (never more than it holds / the deck has), hoping the next player calls wrongly. Roughly 0.6 lines per round, ~20–35% of accusations are bluffs. Bots that move later half-believe what they hear (`HB.trust`).
-- Engine: `Sus.botTalk(g, p, ctx)` returns `{k: acc|hand|sure|dare, p, to, n, v}` (+ `lie`, tests only). `Sus.bot(g, p, ctx)` takes the same `ctx = {says, last}` (kept in the host's memory, not in the game state). Never peeks (tests scramble hidden cards).
-- Online: only the HOST decides and sends, as a ~60-byte node `rooms/sus_<CODE>/chat` (like `emote`, not inside the game string, no transaction). Clients render the payload in their own language (`talk` in i18n.js). Local mode touches no network.
-- UI: last 3 lines in `#talk-feed` (2D and 3D); a bot about to move waits for the line.

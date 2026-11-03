@@ -119,7 +119,7 @@ input[type=text]{ width:100%; padding:12px 14px; border:2px solid var(--line); b
 .actions{ display:flex; gap:10px; justify-content:center; flex-wrap:wrap; } .actions .btn{ min-width:150px; font-size:1.05rem; } .btn-liar{ background:var(--danger); color:#fff; font-size:1.4rem !important; } .btn-pull{ background:#ffb547; color:#3b2300; }
 .statusline{ text-align:center; min-height:1.6em; font-weight:700; color:var(--ink); } .statusline.mine{ color:var(--amber); }
 .banner{ position:fixed; left:0; right:0; top:34%; text-align:center; pointer-events:none; z-index:75; } .banner span{ display:inline-block; padding:8px 26px; background:rgba(6,30,38,.9); font-size:2rem; color:#fff; animation:pop .35s cubic-bezier(.3,1.6,.5,1); } .banner small{ display:block; font-family:'Be Vietnam Pro'; font-size:.85rem; filter:none; letter-spacing:0; color:var(--ink-soft); }
-.banner.bad span{ background:var(--danger); } .banner.good span{ background:var(--good); color:#06302a; } .banner.warn span{ background:var(--amber); color:#3b2300; } .banner:empty{ display:none; }
+.banner.bad span{ background:var(--danger); } .banner.good span{ background:var(--good); color:#06302a; } .banner.warn span{ background:var(--amber); color:#3b2300; } .banner.talk span{ background:var(--cream); color:#2a1a14; font-family:'Be Vietnam Pro',system-ui,sans-serif; font-size:1.05rem; font-weight:600; filter:none; letter-spacing:0; max-width:min(560px,90vw); padding:8px 18px; } .banner:empty{ display:none; }
 @keyframes pop{ from{ transform:scale(.5); opacity:0 } to{ transform:scale(1); opacity:1 } }
 .reveal-row{ display:flex; gap:8px; justify-content:center; margin:8px 0; } .reveal-row img{ width:70px; border-radius:5px; box-shadow:0 4px 0 rgba(0,0,0,.4); animation:flip .5s ease both; } @keyframes flip{ from{ transform:rotateY(90deg) } to{ transform:rotateY(0) } }
 .float{ position:fixed; z-index:80; pointer-events:none; font-size:1.6rem; color:#fff; text-shadow:2px 2px 0 rgba(0,0,0,.5); animation:fl 1.2s ease-out forwards; } @keyframes fl{ from{ opacity:1; margin-top:0 } to{ opacity:0; margin-top:-60px } }
@@ -168,10 +168,3 @@ body.mode3d .seat2d{ width:215px; } body.mode3d .seat2d .cards i{ display:none; 
 .banner{ top:46%; }
 
 .sg-ch{ display:inline-flex; gap:3px; vertical-align:middle; margin-left:4px; } .sg-ch i{ width:9px; height:9px; border-radius:50%; background:#e0b04a; border:1px solid #7a5a14; } .sg-ch i.used{ background:#25788a; border-color:#16515f; } #sg-chip{ cursor:pointer; }
-
-/* bot table talk: the last few lines the hard bots said (visible in 2D and 3D; the 2D seat bubbles are hidden in 3D) */
-#talk-feed{ position:fixed; left:12px; top:62px; width:min(340px,46vw); z-index:59; pointer-events:none; display:flex; flex-direction:column; gap:4px; align-items:flex-start; }
-body.mode3d #talk-feed{ left:50%; transform:translateX(-50%); width:min(460px,92vw); align-items:center; }
-@media (max-width:900px){ #talk-feed{ left:50%; transform:translateX(-50%); width:min(460px,94vw); align-items:center; top:56px; } }
-.tline{ background:rgba(5,24,31,.9); color:var(--ink); padding:5px 12px; font-size:.86rem; font-weight:600; border-left:4px solid var(--sc,#ffb547); max-width:100%; animation:tin .25s ease-out, tout .6s ease-in 6.4s forwards; } .tline b{ margin-right:7px; color:var(--sc,#ffb547); }
-@keyframes tin{ from{ opacity:0; transform:translateY(-6px); } } @keyframes tout{ to{ opacity:0; } }
