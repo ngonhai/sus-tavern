@@ -3,7 +3,7 @@
 // The UI (sus-ui.js) owns rules/timing; this file only draws and animates:
 //   setup({g,me,view}) / sync(g)      static scene for a game state (seats, hands, pile, table card, dead players)
 //   deal(g) playCards(by,ids,n) shout(by,acc) reveal(acc,cards) pullStart(p,beats) pullEnd(p,dead)   the animated moments
-//   setView(seat|'side'), setSelected(ids), onPick(fn), setExpr(seat,expr)
+//   setView(seat|'side'), setSelected(ids), onPick(fn), setExpr(seat,expr), say(seat,text,name,color,ms)   (bot table talk: a flat board above the speaker's head)
 import * as THREE from 'three';
 
 const R = 1.4, TR = .95, TY = .78, CW = .09, CH = .126, CT = .004;      // seat radius, table radius, table top height, card size
@@ -270,7 +270,7 @@ const S3D = (function () {
   // ---------------------------------------------------------------- sync + setup ----
   let setSign = () => {};
   function setup(o) {
-    if (!ok) return; game = o.g; me = o.me; layout(o.g.n); setSign(o.g.sign);
+    if (!ok) return; boards.forEach((m, s) => { if (m) dropBoard(s); }); game = o.g; me = o.me; layout(o.g.n); setSign(o.g.sign);
     players.forEach(p => { if (p) { scene.remove(p.root); p.arms.forEach(a => scene.remove(a.root)); } }); players.length = 0; guns.forEach(g => scene.remove(g)); guns.length = 0; cards.forEach(r => scene.remove(r.mesh)); cards.clear(); fxs.forEach(f => scene.remove(f.m)); fxs = []; tws.length = 0;
     const COLS = ['#ff6a4d', '#5eead4', '#ffb547', '#b39bff', '#6cc4f5'];
     shared = !!(o.g.opts && o.g.opts.shared);
@@ -386,36 +386,46 @@ const S3D = (function () {
       else { f.t += dt; const m = f.m; m.scale.setScalar(f.t < .15 ? .3 + f.t / .15 * .7 : 1); const fade = f.life - 2.5; if (f.t > fade) m.material.opacity = Math.max(0, .92 * (1 - (f.t - fade) / 2.5)); if (f.t >= f.life) { scene.remove(m); fxs.splice(i, 1); } } }
   }
 
-  // ---------------------------------------------------------------- speech boards ----
-  // A flat 2D board above the speaker's head. It follows the player's camera (so it always reads) but is blended with the way the speaker faces the table, so it keeps a slight
-  // angle and sways as the camera moves, like a sign standing in the room instead of a sticker on the lens.
+  // ---------------------------------------------------------------- speech boards (bot table talk) ----
+  // A flat board above the speaker's head. It stays parallel to the player's camera and swings a little with how far the camera is panned (and how far off-centre the board
+  // is on screen), so it reads like a 2D sign that tracks the player's view. Text is drawn on a canvas, so it works with any language.
   const boards = [];
-  const lerpA = (a, b, k) => { const d = ((b - a + Math.PI) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2) - Math.PI; return a + d * k; };
-  function say(s, text, ms) {
-    const P = players[s]; if (!ok || !P || P.dead) return;
-    for (let i = boards.length - 1; i >= 0; i--) if (boards[i].s === s) dropBoard(i);
-    const W = 640, H = 320, c = document.createElement('canvas'); c.width = W; c.height = H; const x = c.getContext('2d');
-    x.font = '700 42px "Be Vietnam Pro", system-ui, sans-serif'; const lines = []; let ln = '';
-    String(text).split(' ').forEach(w => { const t = ln ? ln + ' ' + w : w; if (ln && x.measureText(t).width > W - 100) { lines.push(ln); ln = w; } else ln = t; }); lines.push(ln);
-    const lh = 52, bh = Math.min(H - 44, lines.length * lh + 34), bot = H - 30, top = bot - bh;
-    x.lineWidth = 6; x.strokeStyle = '#2a1a14'; x.fillStyle = '#f6ead2'; x.beginPath(); x.roundRect ? x.roundRect(8, top, W - 16, bh, 26) : x.rect(8, top, W - 16, bh); x.fill(); x.stroke();
-    x.beginPath(); x.moveTo(W / 2 - 24, bot); x.lineTo(W / 2, H - 4); x.lineTo(W / 2 + 24, bot); x.closePath(); x.fill(); x.stroke(); x.fillRect(W / 2 - 20, bot - 5, 40, 9);   // tail toward the head
-    x.fillStyle = '#2a1a14'; x.textAlign = 'center'; x.textBaseline = 'middle'; lines.forEach((l, i) => x.fillText(l, W / 2, top + 17 + lh / 2 + i * lh));
-    const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 4;
-    const ww = .66, wh = ww * H / W, mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: 0, depthTest: false, depthWrite: false });
-    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(ww, wh), mat); mesh.position.y = wh / 2; mesh.renderOrder = 9;
-    const grp = new THREE.Group(); grp.rotation.order = 'YXZ'; grp.add(mesh); scene.add(grp); boards.push({ s, grp, mesh, mat, tex, t0: performance.now(), ms: ms || 3500 });
+  function makeBoard(text, name, col, ms) {
+    const W = 560, pad = 24, fs = 32, lh = 40, cv = document.createElement('canvas'), cx = cv.getContext('2d'), font = '"Be Vietnam Pro", system-ui, sans-serif';
+    cx.font = '700 ' + fs + 'px ' + font; const lines = []; let cur = '';
+    text.split(' ').forEach(w => { const t = cur ? cur + ' ' + w : w; if (cur && cx.measureText(t).width > W - pad * 2) { lines.push(cur); cur = w; } else cur = t; }); if (cur) lines.push(cur);
+    const bodyH = pad + 34 + lines.length * lh + pad * .6, H = bodyH + 30; cv.width = W; cv.height = H;
+    const rr = (x, y, w, h, r) => { cx.beginPath(); cx.moveTo(x + r, y); cx.arcTo(x + w, y, x + w, y + h, r); cx.arcTo(x + w, y + h, x, y + h, r); cx.arcTo(x, y + h, x, y, r); cx.arcTo(x, y, x + w, y, r); cx.closePath(); };
+    cx.lineWidth = 6; cx.strokeStyle = '#2a1a14'; cx.fillStyle = '#f6f0e2'; rr(6, 6, W - 12, bodyH - 6, 22); cx.fill(); cx.stroke();
+    cx.beginPath(); cx.moveTo(W / 2 - 22, bodyH - 2); cx.lineTo(W / 2, H - 4); cx.lineTo(W / 2 + 22, bodyH - 2); cx.closePath(); cx.fill(); cx.stroke(); cx.fillRect(W / 2 - 18, bodyH - 8, 36, 10);
+    cx.textBaseline = 'top'; cx.font = '800 26px ' + font; cx.fillStyle = col; cx.strokeStyle = '#2a1a14'; cx.lineWidth = 4; cx.strokeText(name, pad, pad - 2); cx.fillText(name, pad, pad - 2);
+    cx.font = '700 ' + fs + 'px ' + font; cx.fillStyle = '#2a1a14'; lines.forEach((l, i) => cx.fillText(l, pad, pad + 34 + i * lh));
+    const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace; const w = 1.0, h = w * H / W;
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthTest: false, depthWrite: false, toneMapped: false }));
+    m.renderOrder = 20; m.userData = { h, born: performance.now(), ms }; m.material.opacity = 0; return m;
   }
-  function dropBoard(i) { const b = boards[i]; scene.remove(b.grp); b.mesh.geometry.dispose(); b.mat.dispose(); b.tex.dispose(); boards.splice(i, 1); }
-  function stepBoards(now) {
-    for (let i = boards.length - 1; i >= 0; i--) {
-      const b = boards[i], P = players[b.s], age = now - b.t0; if (!P || P.dead || age > b.ms) { dropBoard(i); continue; }
-      const hd = P.head.getWorldPosition(V(0, 0, 0)); b.grp.position.set(hd.x, hd.y + headR[P.char] * SP[P.char].head + .1, hd.z);
-      const toCam = Math.atan2(cam.position.x - hd.x, cam.position.z - hd.z), toMid = Math.atan2(-hd.x, -hd.z);
-      b.grp.rotation.y = lerpA(toCam, toMid, .35); b.grp.rotation.x = -Math.min(.3, Math.max(0, (cam.position.y - hd.y) * .12));
-      const pop = Math.min(1, age / 180), out = Math.min(1, (b.ms - age) / 260), k = Math.min(pop, out); b.mat.opacity = k; b.grp.scale.setScalar(.7 + .3 * Math.min(1, pop * 1.15));
-    }
+  function dropBoard(s) { const m = boards[s]; if (!m) return; scene.remove(m); m.material.map.dispose(); m.material.dispose(); m.geometry.dispose(); boards[s] = null; }
+  function say(seat, text, name, col, ms) {
+    if (!ok || !players[seat] || players[seat].dead) return; dropBoard(seat);
+    const m = makeBoard(String(text), String(name), col || '#ffb547', ms || 5000); scene.add(m); boards[seat] = m;
   }
+  function stepBoards() {
+    const now = performance.now();
+    boards.forEach((m, s) => {
+      if (!m) return; const u = m.userData, age = now - u.born;
+      if (age > u.ms || !players[s] || players[s].dead) { dropBoard(s); return; }
+      const k = Math.min(1, age / 220), fade = Math.min(1, (u.ms - age) / 400); m.material.opacity = Math.max(0, Math.min(k, fade));
+      m.position.copy(players[s].head.getWorldPosition(V(0, 0, 0))).add(V(0, .3 + u.h * .5, 0));
+      // keep the whole board inside the view (an animal sitting high on the screen would otherwise push it under the header / off the edge)
+      const fw = V(0, 0, -1).applyQuaternion(cam.quaternion), upv = V(0, 1, 0).applyQuaternion(cam.quaternion), rt = V(1, 0, 0).applyQuaternion(cam.quaternion);
+      const dep = Math.max(.5, m.position.clone().sub(cam.position).dot(fw)), hh = Math.tan(cam.fov * Math.PI / 360) * dep, hw = hh * (cam.aspect || 1.6), sc = Math.max(.45, Math.min(1.1, dep / 2.6)) * (.85 + .15 * k), bh = u.h * .5 * sc / hh, bw = .5 * sc / hw;   // world size follows the distance, so it looks about the same size wherever the speaker sits
+      m.scale.setScalar(sc);
+      let rel = m.position.clone().project(cam), yy = Math.min(rel.y, .8 - bh), xx = Math.max(-.48 + bw, Math.min(.97 - bw, rel.x));
+      m.position.addScaledVector(upv, (yy - rel.y) * hh).addScaledVector(rt, (xx - rel.x) * hw); rel = m.position.clone().project(cam);
+      m.quaternion.copy(cam.quaternion); m.rotateY(-rel.x * .35 - view.parX * .3 + .1); m.rotateZ(-.03);
+    });
+  }
+
   // ---------------------------------------------------------------- camera ----
   function camTarget() {
     if (view.mode === 'side' || !SEAT.length) { const t = performance.now() / 1000, a = t * .08; return { pos: V(Math.sin(a) * 2.7, 1.9, Math.cos(a) * 2.7), look: V(0, TY + .15, 0), fov: 50 }; }
@@ -458,7 +468,7 @@ const S3D = (function () {
     cards.forEach(r => { if (r.busy || r.owner !== viewSeat() || r.inPile || !r.home) return; const want = (selIds.has(r.id) ? .06 : 0) + (hoverId === r.id ? .025 : 0); r.mesh.position.y += (r.home.pos.y + want - r.mesh.position.y) * Math.min(1, dt * 14); });
     tcard.position.y = TY + .32 + tcOff + Math.sin(t * 1.6) * .012; tcard.rotation.y = Math.atan2(cam.position.x - tcard.position.x, cam.position.z - tcard.position.z);
     { const hr = hoverId != null ? cards.get(hoverId) : null; if (hr) { glow.position.copy(hr.mesh.position).add(V(0, .02, 0)); glow.visible = true; } glowA += ((hr ? .35 : 0) - glowA) * Math.min(1, dt * 10); glow.material.opacity = glowA; if (glowA < .01 && !hr) glow.visible = false; }
-    updateCamera(dt, t); stepBoards(now); renderer.render(scene, cam);
+    updateCamera(dt, t); stepBoards(); renderer.render(scene, cam);
   }
   function resize() { if (!renderer) return; const w = wrap.clientWidth || innerWidth, h = wrap.clientHeight || innerHeight; renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 1.5)); renderer.setSize(w, h, false); cam.aspect = w / h; cam.updateProjectionMatrix(); }
   function init(container) {
@@ -475,6 +485,6 @@ const S3D = (function () {
   }
   function start() { if (!ok || running) return; running = true; resize(); lastT = performance.now(); raf = requestAnimationFrame(frame); }
   function stop() { running = false; cancelAnimationFrame(raf); clearInterval(hidT); }
-  return { passGun, dbg: () => guns.map(g => [g.position.x, g.position.y, g.position.z, !!g.userData.held]), err: () => lastErr, init, setup, sync, start, stop, setView, setSelected, setExpr, say, deal, playCards, shout, reveal, pullStart, pullEnd, slam, point, onPick: f => { cb.pick = f; }, onHover: f => { cb.hover = f; }, isOk: () => ok };
+  return { passGun, dbg: () => guns.map(g => [g.position.x, g.position.y, g.position.z, !!g.userData.held]), err: () => lastErr, init, setup, sync, start, stop, setView, setSelected, setExpr, deal, playCards, shout, reveal, pullStart, pullEnd, slam, point, say, onPick: f => { cb.pick = f; }, onHover: f => { cb.hover = f; }, isOk: () => ok };
 })();
 window.S3D = S3D;

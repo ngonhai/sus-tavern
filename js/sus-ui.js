@@ -6,7 +6,7 @@
   const $ = id => document.getElementById(id), esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const sleep = ms => new Promise(r => setTimeout(r, ms)), reduce = () => { try { return matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) { return false; } };
   const SEATCOL = ['#ff6a4d', '#5eead4', '#ffb547', '#b39bff', '#6cc4f5'];
-  const U = { screen: null, view: null, queue: [], busy: false, pending: false, sel: new Set(), me: 0, spec: false, d3: false, can3d: false, cam: 'pov', camSeat: 0, botT: null, expr: [], say: [], claim: '', settings: Sus.normSettings(), lastEmote: 0, room: null, shownOver: null, myChar: (function () { try { return localStorage.getItem('sus_char'); } catch (e) { return null; } })(), gunSticky: false };
+  const U = { screen: null, view: null, queue: [], busy: false, pending: false, sel: new Set(), me: 0, spec: false, d3: false, can3d: false, cam: 'pov', camSeat: 0, botT: null, expr: [], say: [], claim: '', settings: Sus.normSettings(), lastEmote: 0, lastChat: 0, tctx: null, room: null, shownOver: null, myChar: (function () { try { return localStorage.getItem('sus_char'); } catch (e) { return null; } })(), gunSticky: false };
   const S3 = () => window.S3D;
   const meIdx = g => { if (Net.mode() === 'local') return g.seatKeys.indexOf('s0'); const k = Net.mySeat(); return k ? g.seatKeys.indexOf(k) : -1; };
 
@@ -74,11 +74,12 @@
     U.room = room;
     if (!room) { if (U.screen !== 'lobby') { toast(t('hostLeft')); U.view = null; showLobby(); } return; }
     if (room.status === 'lobby') { if (U.screen !== 'waiting') show('waiting'); renderWaiting(room); return; }
-    if (room.status === 'play') { if (U.screen !== 'game') { show('game'); Snd.musicStart(); } const g = Net.getG(room); if (g) pushState(g, room); if (room.emote && room.emote.ts !== U.lastEmote) { U.lastEmote = room.emote.ts; if (g && room.emote.key !== Net.mySeat()) showEmote(g.seatKeys.indexOf(room.emote.key), room.emote.k); } }
+    if (room.status === 'play') { if (U.screen !== 'game') { show('game'); Snd.musicStart(); } const g = Net.getG(room); if (g) pushState(g, room); if (room.emote && room.emote.ts !== U.lastEmote) { U.lastEmote = room.emote.ts; if (g && room.emote.key !== Net.mySeat()) showEmote(g.seatKeys.indexOf(room.emote.key), room.emote.k); }
+      if (room.chat && room.chat.ts !== U.lastChat) { U.lastChat = room.chat.ts; if (g && room.chat.m && Math.abs(g.seq - room.chat.m.q) <= 2) showTalk(g.seatKeys.indexOf(room.chat.key), room.chat.m); } }
   }
   function pushState(g, room) {
     if (!U.view || U.view.id !== g.id) {
-      U.view = g; U.queue = []; U.busy = false; U.pending = false; U.sel.clear(); U.expr = []; U.claim = ''; closeModalSoft(); U.shownOver = null;
+      U.view = g; U.queue = []; U.busy = false; U.pending = false; U.sel.clear(); U.expr = []; U.claim = ''; U.tctx = { says: [], last: {}, seq: -1, until: 0, at: 0 }; closeModalSoft(); U.shownOver = null;
       U.spec = Net.mode() === 'online' && Net.isSpec(); const mi = meIdx(g); U.me = mi >= 0 ? mi : (U.camSeat || 0); U.camSeat = U.me; U.cam = U.spec ? 'side' : 'pov';
       if (U.d3) S3().setup({ g, me: U.me, view: U.spec && U.cam === 'side' ? 'side' : U.me });
       renderGame(g); afterIdle(); return;
@@ -159,7 +160,7 @@
   // ---------------------------------------------------------------- event player ----
   function say(txt, cls, sub) { const b = $('banner'); b.className = 'banner ' + (cls || ''); b.innerHTML = txt ? '<span>' + txt + (sub ? '<small>' + sub + '</small>' : '') + '</span>' : ''; }
   function floatAt(i, txt, col) { const el = document.querySelector('.seat2d[data-i="' + i + '"]'); const r = el ? el.getBoundingClientRect() : { left: innerWidth / 2, top: 120, width: 0, height: 0 }; const f = document.createElement('div'); f.className = 'float'; f.textContent = txt; f.style.left = (r.left + r.width / 2) + 'px'; f.style.top = (r.top + 10) + 'px'; if (col) f.style.color = col; $('fx').appendChild(f); setTimeout(() => f.remove(), 1300); }
-  function bubble(i, txt, ms, cls) { const el = $('say-' + i); if (!el) return; el.textContent = txt; el.classList.toggle('talk', cls === 'talk'); el.classList.add('on'); clearTimeout(bubble['t' + i]); bubble['t' + i] = setTimeout(() => el.classList.remove('on'), ms || 1800); }
+  function bubble(i, txt, ms) { const el = $('say-' + i); if (!el) return; el.textContent = txt; el.classList.add('on'); clearTimeout(bubble['t' + i]); bubble['t' + i] = setTimeout(() => el.classList.remove('on'), ms || 1800); }
   function setExpr(i, ex, ms) { U.expr[i] = ex; if (U.d3) S3().setExpr(i, ex); const av = document.querySelector('.seat2d[data-i="' + i + '"] .av'); if (av) av.innerHTML = Art.avatar(U.view.chars[i], U.view.alive[i] ? ex : 'dead'); clearTimeout(setExpr['t' + i]); if (ms) setExpr['t' + i] = setTimeout(() => { U.expr[i] = 'neutral'; if (U.d3) S3().setExpr(i, U.view && U.view.alive[i] ? 'neutral' : 'dead'); const a2 = document.querySelector('.seat2d[data-i="' + i + '"] .av'); if (a2 && U.view) a2.innerHTML = Art.avatar(U.view.chars[i], U.view.alive[i] ? 'neutral' : 'dead'); }, ms); }
   function shake() { document.body.classList.remove('shake'); void document.body.offsetWidth; document.body.classList.add('shake'); setTimeout(() => document.body.classList.remove('shake'), 520); }
   function flashScreen(col) { const f = $('flash-screen'); f.style.background = col; if (reduce()) return; f.animate([{ opacity: .75 }, { opacity: 0 }], { duration: 450 }); }
@@ -185,10 +186,6 @@
       case 'play': {
         U.claim = t('claims', { n: nm(e.by), k: e.n, c: t('cardName')[g.target] }).replace(/<[^>]+>/g, ''); Snd.play('card'); bubble(e.by, t('claims', { n: '', k: e.n, c: t('cardShort')[g.target] }).trim(), 1600); setExpr(e.by, 'smug', 900);
         if (U.d3) await S3().playCards(e.by, e.ids, e.n); else await flyCards(e.by, e.n); const c = $('center'); if (c) { const cl = c.querySelector('.claim-big'); if (cl) cl.textContent = U.claim; } await sleep(260); break;
-      }
-      case 'talk': {                       // 2D: a bubble over the avatar; 3D: a board above the head that turns with the camera
-        const text = tr('talkDoubt', { a: g.names[e.about], n: e.n, k: e.cnt, c: t('cardShort')[g.target] }), ms = reduce() ? 2500 : 4200;
-        bubble(e.by, text, ms, 'talk'); if (U.d3) S3().say(e.by, text, ms); setExpr(e.by, 'smug', 1800); Snd.play('select'); await sleep(reduce() ? 900 : 2300); break;
       }
       case 'call': {
         if (e.auto) { say(t('autoReveal', { n: nm(e.acc) }), 'warn'); setExpr(e.acc, 'scared', 2000); await sleep(900); }
@@ -247,25 +244,45 @@
   function showEmote(i, kind) { if (i < 0) return; if (kind === 'slam') { if (U.d3 && !U.busy) S3().slam(i); return; } if (/^point\d+$/.test(kind)) { if (U.d3 && !U.busy) S3().point(i, +kind.slice(5)); return; } if (!EM[kind]) return; bubble(i, t('emotes')[kind] || kind, 1800); setExpr(i, EM[kind][0], 1800); Snd.play('select'); }
   function doEmote(kind) { const g = U.view; if (!g || U.spec) return; showEmote(U.me, kind); Net.emote(kind); }
 
+  // ---- bot table talk (hard bots): the host decides who says what (at most one line per play); every client just renders the small payload in its own language ----
+  const isBotSeat = (g, i) => { if (Net.mode() === 'local') return i !== U.me; const r = Net.room(), k = g.seatKeys[i]; return !!(r && r.seats[k] && r.seats[k].bot); };
+  function planTalk(g, a) {
+    const C = U.tctx; if (!C || g.opts.botLevel !== 2 || g.phase !== 'play' || !g.last || C.seq === g.seq) return;
+    C.seq = g.seq; if (!(Net.mode() === 'local' || (Net.mode() === 'online' && Net.isHost(Net.room()))) || Date.now() - C.at < 2500) return;
+    const order = g.alive.map((x, i) => i).filter(i => g.alive[i] && i !== a && isBotSeat(g, i)).sort(() => Math.random() - .5);
+    for (const p of order) {
+      const m = Sus.botTalk(g, p, C); if (!m) continue;
+      C.last[p] = g.seq; C.says.push({ by: p, k: m.k, to: m.to, n: m.n, round: g.round, np: (g.plays || []).length }); if (C.says.length > 12) C.says.shift();   // bots that move later hear it (they only half-believe it)
+      const d = 900 + Math.random() * 1300, seq = g.seq; C.at = Date.now(); C.until = Date.now() + d + 1300;
+      setTimeout(() => emitTalk(seq, m), d); return;
+    }
+  }
+  function emitTalk(seq, m) {
+    const g = U.view; if (!g || g.seq !== seq || U.busy || !g.alive[m.p]) return;
+    const pay = { to: m.to, n: m.n, v: m.v, q: seq }; showTalk(m.p, pay);
+    const ts = Net.say(g.seatKeys[m.p], pay); if (ts) U.lastChat = ts;                       // ~60 bytes, only online and only from the host
+  }
+  function showTalk(i, m) {
+    const g = U.view; if (!g || i < 0 || !g.alive[i]) return;
+    const arr = t('talk')[m.n ? 'acc' : 'accNo']; if (!arr || !arr.length) return;
+    const txt = arr[(m.v || 0) % arr.length].replace(/\{(\w+)\}/g, (x, w) => w === 'n' ? m.n : w === 'to' ? (g.names[m.to] || '?') : w === 'c' ? t('cardShort')[g.target] : x), ms = 4800 + txt.length * 30;
+    if (U.d3) S3().say(i, txt, g.names[i], SEATCOL[i % SEATCOL.length], ms);                  // a flat board in the 3D scene that follows the camera
+    else { const el = $('say-' + i); if (el) { const sr = el.parentElement.getBoundingClientRect(); el.classList.add('talk'); el.classList.toggle('below', sr.top < 150); bubble(i, txt, ms); clearTimeout(showTalk['t' + i]); showTalk['t' + i] = setTimeout(() => el.classList.remove('talk'), ms + 300); } }
+    setExpr(i, 'smug', 1800); Snd.play('select');
+  }
+
   // bots (local), dropped players (host), and a safety pull for a human who dithers
   function afterIdle() {
     clearTimeout(U.botT); const g = U.view; if (!g || U.busy || U.queue.length) return;
     if (g.phase === 'over') { showOver(g); return; }
     const a = Sus.actor(g); if (a < 0) return; const isMe = !U.spec && a === U.me, key = g.seatKeys[a], room = Net.room();
-    chatSoon(g, a);
-    if (Net.mode() === 'local' && !isMe) { U.botT = setTimeout(() => botMove(a), 900 + Math.random() * 900); return; }
-    if (Net.mode() === 'online' && !isMe && room && Net.isHost(room) && room.seats[key] && room.seats[key].bot) { U.botT = setTimeout(() => botMove(a), 1000 + Math.random() * 900); return; }
+    planTalk(g, a); const wait = Math.max(0, (U.tctx ? U.tctx.until : 0) - Date.now());
+    if (Net.mode() === 'local' && !isMe) { U.botT = setTimeout(() => botMove(a), 900 + Math.random() * 900 + wait); return; }
+    if (Net.mode() === 'online' && !isMe && room && Net.isHost(room) && room.seats[key] && room.seats[key].bot) { U.botT = setTimeout(() => botMove(a), 1000 + Math.random() * 900 + wait); return; }
     if (Net.mode() === 'online' && !isMe && room && Net.isHost(room) && room.seats[key] && room.seats[key].connected === false) { U.botT = setTimeout(() => botMove(a), 4500); return; }
     if (isMe && g.phase === 'trigger') U.botT = setTimeout(() => { if (U.view === g && !U.busy) doPull(); }, 14000);
   }
-  // hard bots may comment on the play that was just made before the next player decides (host only, so every write to the table comes from one client; at most one comment per play)
-  function chatSoon(g, a) {
-    clearTimeout(U.talkT); const room = Net.room(), online = Net.mode() === 'online';
-    if (g.opts.botLevel !== 2 || g.phase !== 'play' || !g.last || (g.talk || []).some(x => x.at === g.plays.length) || (online && !(room && Net.isHost(room)))) return;
-    const bots = Sus.aliveList(g).filter(c => c !== g.last.by && c !== a && (online ? !!(room.seats[g.seatKeys[c]] || {}).bot : c !== U.me)); if (!bots.length) return;
-    U.talkT = setTimeout(() => { const v = U.view; if (!v || U.busy || U.queue.length || v.seq !== g.seq) return; const c = bots[Math.floor(Math.random() * bots.length)], act = Sus.botTalk(v, c); if (act) Net.act(act, c); }, 450 + Math.random() * 500);
-  }
-  function botMove(a) { if (U.busy || U.queue.length || !U.view) return; const g = U.view; if (Sus.actor(g) !== a) return; Net.act(Sus.bot(g, a), a); }
+  function botMove(a) { if (U.busy || U.queue.length || !U.view) return; const g = U.view; if (Sus.actor(g) !== a) return; Net.act(Sus.bot(g, a, U.tctx), a); }
   function showOver(g) {
     if (U.shownOver === g.id) return; U.shownOver = g.id; const win = g.winner === U.me && !U.spec; const host = Net.isHost(Net.room());
     setTimeout(() => modal('<h2 class="center">' + (U.spec ? tr('winner', { n: esc(g.names[g.winner]) }) : win ? t('youWin') : t('youLose')) + '</h2><div class="center" style="width:90px;margin:0 auto">' + Art.avatar(g.chars[g.winner], 'laugh') + '</div><p class="center">' + tr('winner', { n: esc(g.names[g.winner]) }) + '</p>' +
@@ -282,7 +299,7 @@
     modal('<h3>' + t('leaveQ') + '</h3><p class="muted center" id="m-leave-txt">' + leaveText() + '</p><button type="button" class="btn btn-block" id="m-stay">' + t('leaveStay') + '</button><button type="button" class="btn btn-secondary btn-block" id="m-leave-yes">' + t('leaveYes') + '</button>');
     const st = $('m-stay'), ye = $('m-leave-yes'); if (st) { st.onclick = closeModal; st.focus(); } if (ye) ye.onclick = leaveToLobby;
   }
-  async function leaveToLobby() { clearTimeout(U.botT); clearTimeout(U.talkT); U.view = null; U.queue = []; U.busy = false; closeModal(); await Net.leave(); document.body.classList.remove('tense'); Snd.setTension(0); showLobby(); }
+  async function leaveToLobby() { clearTimeout(U.botT); U.view = null; U.queue = []; U.busy = false; closeModal(); await Net.leave(); document.body.classList.remove('tense'); Snd.setTension(0); showLobby(); }
 
   // ---- revolver info: hover the gun (or its seat chip); tap on touch screens ----
   function showGun(p, x, y, sticky) {
