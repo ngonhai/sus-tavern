@@ -103,4 +103,53 @@ for (let n = 2; n <= 5; n++) for (let s = 0; s < 40; s++) {
 // duels: normal (expected-shots bot) must beat easy, hard must beat normal (cross-seat, fair share = 50%)
 { function duel(hi, lo, G) { let w = 0; for (let i = 0; i < G; i++) { const seat = i % 2, g = Sus.newGame(['a', 'b', 'c', 'd'], { devil: true }, 15000 + i); let st = 0; while (g.phase !== 'over' && st++ < 3000) { const a = Sus.actor(g); g.opts.botLevel = a % 2 === seat ? hi : lo; Sus.apply(g, a, Sus.bot(g, a)); } if (g.winner % 2 === seat) w++; } return w; }
   const n1 = duel(1, 0, 200), h1 = duel(2, 1, 200); console.log('normal vs easy (2v2):', n1, '/200 | hard vs normal (2v2):', h1, '/200 (fair = 100)'); ok(n1 > 130, 'normal beats easy'); ok(h1 > 130, 'hard beats normal'); }
+// regression: 3 unchecked fake cards followed by 1 real card must not make the hard bot shout "Liar!" at the real card (earlier plays of the same player are not all true)
+{ let ign = 0, called = 0; for (let i = 0; i < 300; i++) { const g = Sus.newGame(['me', 'bot'], { botLevel: 2 }, 777 + i); g.turn = 0; g.target = 'K';
+    g.hands[0] = [{ id: 901, k: 'Q' }, { id: 902, k: 'Q' }, { id: 903, k: 'A' }, { id: 904, k: 'K' }, { id: 905, k: 'A' }]; g.hands[1] = g.hands[1].filter(c => c.id < 900);
+    Sus.apply(g, 0, { t: 'play', ids: [901, 902, 903] }); const a = Sus.bot(g, 1); if (a.t === 'call') continue; Sus.apply(g, 1, a); if (Sus.actor(g) !== 0) continue;
+    Sus.apply(g, 0, { t: 'play', ids: [904] }); if (Sus.actor(g) !== 1) continue; ign++; if (Sus.bot(g, 1).t === 'call') called++; }
+  ok(ign > 100 && called <= ign * .15, 'hard bot is not baited by 3 fakes + 1 real (' + called + '/' + ign + ' calls)'); }
+
+// ---- hard bot table talk ----
+{ const mkRand = seed => { let r = seed >>> 0; return () => { r = (r * 1664525 + 1013904223) >>> 0; return r / 4294967296; }; };
+  let talks = 0, bluffs = 0, accs = 0, peeked = 0, checked = 0, bad = 0, gate = 0, cool = 0, boosted = 0, mono = 0, cases = 0;
+  const kinds = {};
+  for (const devil of [false, true]) for (let n = 2; n <= 5; n++) for (let sd = 0; sd < 30; sd++) {
+    const g = Sus.newGame(Array.from({ length: n }, (_, i) => 'P' + i), { devil, botLevel: 2 }, 6000 + sd * 17 + n); let steps = 0; const ctx = { says: [], last: {} };
+    while (g.phase !== 'over' && steps++ < 500) {
+      const a = Sus.actor(g);
+      if (g.phase === 'play' && g.last) {
+        for (let p = 0; p < n; p++) {
+          if (!g.alive[p]) continue;
+          const m = Sus.botTalk(g, p, { rand: mkRand(steps * 31 + p), last: ctx.last, says: ctx.says });
+          if (p === a) { if (m) bad++; continue; }                                                   // the player about to decide never talks
+          const lo = JSON.parse(JSON.stringify(g)); lo.opts.botLevel = 1; if (Sus.botTalk(lo, p, { rand: mkRand(1) })) gate++;   // only hard bots talk
+          if (!m) continue;
+          talks++; kinds[m.k] = (kinds[m.k] || 0) + 1; if (m.lie) bluffs++; if (m.k === 'acc') accs++;
+          const per = Math.max(6, Math.ceil(n * 5 / 3)), GT = g.opts.joker ? per + 2 : per, mine = g.plays.filter(x => x.by === p).reduce((q, x) => q + x.ids.length, 0);
+          if ((m.k === 'acc' || m.k === 'hand') && (m.n > g.hands[p].length || m.n > GT - mine || m.n < 0 || (m.n > 0 && m.n < 2))) bad++;      // a stated count of table cards must be possible
+          if (m.k === 'acc' && m.to !== g.last.by) bad++; if (m.k === 'hand' && m.to !== -1) bad++; if (m.p !== p) bad++;
+          if (!m.lie && m.k === 'acc' && m.n > 0 && m.n !== g.hands[p].filter(c => c.k === g.target || c.k === 'J').length) bad++;   // an honest count is the real one
+          // never peeks: scramble what p cannot see, same random numbers -> same line
+          const sc = JSON.parse(JSON.stringify(g)), ks = devil ? ['A', 'K', 'Q', 'D'] : ['A', 'K', 'Q'], mineIds = new Set(); sc.plays.forEach(x => { if (x.by === p) x.ids.forEach(id => mineIds.add(id)); });
+          sc.hands.forEach((h, j) => { if (j !== p) h.forEach(c => { c.k = ks[(c.id * 7 + steps) % ks.length]; }); });
+          sc.pile.forEach(c => { if (!mineIds.has(c.id)) c.k = ks[(c.id * 5 + steps) % ks.length]; }); sc.last.cards = sc.last.cards.map(c => sc.pile.find(x => x.id === c.id) || c);
+          const m2 = Sus.botTalk(sc, p, { rand: mkRand(steps * 31 + p), last: ctx.last, says: ctx.says }); checked++; if (p !== g.last.by && JSON.stringify(m2) !== JSON.stringify(m)) peeked++;
+          if (p === g.last.by) continue;
+          ctx.last[p] = g.seq; if (Sus.botTalk(g, p, { rand: () => 0, last: ctx.last, says: [] })) cool++;                // cooldown: not again right away
+          ctx.says.push({ by: p, k: m.k, to: m.to, n: m.n, round: g.round }); break;
+        }
+        // what the other bots hear moves them the right way (never less suspicious), and an impossible count is ignored
+        const q = [...Array(n).keys()].find(j => j !== a && j !== g.last.by && g.alive[j] && g.hands[j].length >= 3);
+        if (q != null && a !== g.last.by) { const s0 = Sus.suspicion2(g, a, null).lie, s1 = Sus.suspicion2(g, a, { says: [{ by: q, k: 'acc', to: g.last.by, n: 3, round: g.round }] }).lie, s2 = Sus.suspicion2(g, a, { says: [{ by: q, k: 'acc', to: g.last.by, n: 9, round: g.round }] }).lie;
+          cases++; if (s1 >= s0 - 1e-9) mono++; if (s1 > s0 + 1e-6) boosted++; if (s2 !== s0) bad++; }
+      }
+      if (!Sus.apply(g, a, Sus.bot(g, a, ctx))) { ok(false, 'bot with talk context illegal'); break; }
+    }
+  }
+  console.log('talk lines', talks, 'kinds', JSON.stringify(kinds), 'bluffs', bluffs, '| listening: raised suspicion in', boosted, 'of', cases);
+  ok(talks > 300, 'hard bots do talk (' + talks + ')'); ok(bad === 0, 'every line is legal: possible counts, right targets, honest counts are real (' + bad + ' bad)');
+  ok(gate === 0, 'easy/normal bots never talk'); ok(peeked === 0 && checked > 300, 'talk never depends on hidden cards (' + peeked + '/' + checked + ')'); ok(cool === 0, 'a bot does not talk twice in a row');
+  ok(bluffs > accs * .1 && bluffs < talks * .6, 'some of the lines are bluffs, not most (' + bluffs + ' of ' + talks + ')');
+  ok(mono === cases && boosted > cases * .3, 'a believable claim of table cards makes the other bots more suspicious (' + boosted + '/' + cases + ')'); }
 if (fails) { console.error(fails + ' failures'); process.exit(1); } else console.log('engine tests passed');

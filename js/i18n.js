@@ -21,7 +21,14 @@ const I18N = {
     d3: '3D', d2: '2D', no3d: 'Không bật được 3D (cần WebGL).', music: 'Nhạc', sound: 'Âm thanh', mute: 'Tắt',
     helpT: 'Cách chơi', helpB: ['Mỗi vòng có một lá bàn (Át / K / Q). Mỗi người cầm 5 lá.', 'Bộ bài: 6 lá Át, 6 lá K, 6 lá Q (có thêm một ít mỗi loại nếu tắt Joker để đủ bài chia), cộng thêm 2 Joker và/hoặc 1 lá Ác Quỷ nếu bật tuỳ chọn. Mỗi người nhận 5 lá.', 'Đến lượt: đặt 1–3 lá úp và tuyên bố đó là lá bàn — hoặc hét "Nói dối!" với người ngay trước.', 'Joker thay được mọi lá. Lật bài: toàn lá bàn/Joker thì người hét sai, ngược lại người đặt bài sai. Người thua bóp cò súng của mình (6 ổ, 1 viên, mỗi lần bóp đạn tiến một ổ).', 'Người hết bài bị bỏ qua lượt. Khi không còn ai khác cầm bài, lá vừa đánh được lật tự động: dối thì người đánh bóp cò, thật thì không ai bóp cò và chia bài lại. Người cuối cùng sống sót thắng.', 'Chế độ 3D: bấm đúp mặt bàn để đập bàn, bấm vào một con vật để chỉ tay vào nó.', 'Tuỳ chọn Lá Ác Quỷ: bị lật ra thì mọi người khác (trừ người vừa đánh lá đó) lần lượt bóp cò. Joker thật thì luôn an toàn.'],
     ok: 'Đã hiểu', hostLeft: 'Chủ phòng đã rời.', noRoom: ['Không tìm thấy phòng', 'Code phòng có vẻ sai đâu đó', 'Phòng không có trong dữ liệu'], needName: 'Nhập tên trước đã.', youAreSpec: 'Bàn đã đầy / ván đang chạy: bạn xem với tư cách khán giả.', spectating: 'Đang xem',
-    emotes: { laugh: 'Hahaha', angry: 'Cay Cay Cay', sus: 'Hmm… fake quá', sweat: 'Gung gung' }, emote: 'Biểu cảm'
+    emotes: { laugh: 'Hahaha', angry: 'Cay Cay Cay', sus: 'Hmm… fake quá', sweat: 'Gung gung' }, emote: 'Biểu cảm',
+    talk: {   // hard bots' table talk; {to} = accused, {n} = number of table cards, {c} = table card
+      acc: ['{to} nói dối đấy! Tao đang cầm {n} lá {c} trên tay rồi.', 'Đừng tin {to}, tao cầm tới {n} lá {c} đây này.', '{n} lá {c} nằm trong tay tao hết, {to} lấy đâu ra mà đánh thật?'],
+      accNo: ['{to} nói dối đấy, tao ngửi thấy mùi fake.', 'Nhìn mặt {to} là biết đang lừa rồi.', 'Tao mà là mày thì tao hét "nói dối" luôn.'],
+      hand: ['Bàn này tao cầm {n} lá {c} rồi, ai đánh {c} thì coi chừng.', 'Tao giữ {n} lá {c} trong tay, còn lại chẳng bao nhiêu đâu.', 'Cẩn thận, {c} gần cạn rồi, tao cầm {n} lá đây này.'],
+      sure: ['Thật đấy, tao đánh {n} lá {c} thôi mà.', 'Tin tao đi, tao không dối đâu.', 'Mặt tao giống người nói dối lắm hả?'],
+      dare: ['Gọi đi, nếu mày đủ gan.', 'Hét "nói dối" đi, tao đang chờ đây.', 'Mày thử gọi xem, tao cá là mày sẽ hối hận.']
+    }
   },
   en: {
     addBot: '+ Add bot', rmBot: 'Remove', pickChar: 'Pick your animal', chars: { pig: 'Pig', fox: 'Fox', dog: 'Dog', goat: 'Goat', octo: 'Octopus', penguin: 'Penguin', hawk: 'Hawk', turtle: 'Turtle' }, botTag: 'bot', seatsFull: 'The table is full.',
@@ -44,7 +51,14 @@ const I18N = {
     d3: '3D', d2: '2D', no3d: '3D unavailable (WebGL needed).', music: 'Music', sound: 'Sound', mute: 'Mute',
     helpT: 'How to play', helpB: ['Each round has a table card (Ace / King / Queen). Everyone holds 5 cards.', 'The deck: 6 Aces, 6 Kings, 6 Queens (8 of each with 5+ players) (a few more of each when Jokers are off so everyone can be dealt 5 cards), plus 2 Jokers and/or 1 Devil if those options are on. Everyone is dealt 5 cards and any left over stay out of play — count what you hold to work out who is lying.', 'On your turn: play 1–3 cards face-down claiming they are the table card — or shout "Liar!" at the player before you.', 'Jokers are wild. On a call, if all cards are table cards/Jokers the caller was wrong, otherwise the player who played was lying. The loser pulls their own trigger (6 chambers, 1 bullet, each pull moves it one chamber).', 'Players with no cards are skipped. When nobody else holds a card, the last play is turned over automatically: a lie means the player pulls the trigger, the truth means nobody does and a new round is dealt. Last one alive wins.', '3D mode: double-click the table to slam it, click an animal to point at it.', 'Devil option: looks like a Joker but is never honest (it is not wild); revealed, it makes everybody except the player who played it pull the trigger in turn. A real Joker is always safe.'],
     ok: 'Got it', hostLeft: 'The host left.', noRoom: 'Room not found.', needName: 'Enter a name first.', youAreSpec: 'Table full / game running: you are watching as a spectator.', spectating: 'Watching',
-    emotes: { laugh: 'Hahaha', angry: 'Grr', sus: 'Hmm… sus', sweat: 'Yikes' }, emote: 'Emote'
+    emotes: { laugh: 'Hahaha', angry: 'Grr', sus: 'Hmm… sus', sweat: 'Yikes' }, emote: 'Emote',
+    talk: {   // hard bots' table talk; {to} = accused, {n} = number of table cards, {c} = table card
+      acc: ['{to} is lying! I am holding {n} {c} right here.', "Don't trust {to}, I've got {n} {c} in my hand.", 'I hold {n} {c} myself, where would {to} get real ones?'],
+      accNo: ['{to} is lying, I can smell the fake.', "One look at {to} and I know it's a bluff.", "If I were you I'd call it right now."],
+      hand: ['I am sitting on {n} {c} this round, careful with that card.', "{n} {c} in my hand, there's hardly any left.", 'The {c} is nearly gone, I hold {n} of them.'],
+      sure: ['It is true, just {n} {c}, honest.', 'Trust me, I would never lie.', 'Do I look like a liar to you?'],
+      dare: ['Go on, call me if you dare.', "Shout 'Liar!' then, I'm waiting.", "Try calling me, you'll regret it."]
+    }
   }
 };
 let LANG = (function () { try { const s = localStorage.getItem('sus_lang'); if (s && I18N[s]) return s; } catch (e) {} return (navigator.language || 'vi').toLowerCase().startsWith('en') ? 'en' : 'vi'; })();

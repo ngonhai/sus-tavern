@@ -139,19 +139,30 @@
   const pullCost = (g, j) => { const left = CH - gunOf(g, j).pos, r1 = left <= 1 ? 1 : 1 / left, r2 = left <= 2 ? 1 : 1 / (left - 1); return r1 + (1 - r1) * .3 * r2; };   // death chance now + a share of the chance of having to pull again
   function lieRate(g, j) { let a = 0, c = 0; for (const l of g.log) if (l.t === 'call' && l.acc === j) { a++; if (!l.honest) c++; } return Math.max(.04, (c + 1.2) / (a + 5) - .08); }   // voluntary bluff rate (the lies they are forced into are subtracted roughly)
   function roundSegs(g) { const segs = []; let off = 0; for (const l of g.log) if (l.t === 'play' && l.r === g.round) { segs.push({ by: l.by, cards: g.pile.slice(off, off + l.n) }); off += l.n; } return off === g.pile.length ? segs : null; }
+  // P(the LAST play of one player is a lie), given every play that player made this round (sizes in order). A call only turns the last play over, while the earlier plays
+  // may well have been lies that were never checked — so we must NOT add up all their claims as if they were true. Exact DP: X real cards dealt (hypergeometric); each
+  // earlier/last play is honest (needs enough real cards left) or a lie (uses fake cards); hw/lw give the likelihood of an honest / lying play of size s.
+  function lastLie(N, K, H0, sizes, hw, lw) {
+    N = Math.max(1, Math.round(N)); K = Math.max(0, Math.min(N, Math.round(K))); H0 = Math.max(1, Math.min(H0, N)); let hon = 0, lie = 0;
+    const go = (i, r, f, w) => {
+      const s = sizes[i], last = i === sizes.length - 1;
+      if (r >= s) { const x = hw(s, r); if (x > 0) { if (last) hon += w * x; else go(i + 1, r - s, f, w * x); } }
+      if (f >= 1 && r + f >= s) { const x = lw(s, r, f); if (x > 0) { const uf = Math.min(f, s), ur = s - uf; if (last) lie += w * x; else go(i + 1, r - ur, f - uf, w * x); } }
+    };
+    for (let X = 0; X <= Math.min(H0, K); X++) { const px = hyper(N, K, H0, X); if (px > 0) go(0, X, H0 - X, px); }
+    return hon + lie > 0 ? lie / (hon + lie) : .9;
+  }
   function infer(g, p) {
     const L = g.last, q = L.by, n = L.n, segs = roundSegs(g); if (!segs || !segs.length || segs[segs.length - 1].by !== q) return { q, n, pLie: suspicion(g, p), pD: 0 };
     const isM = c => c.k === g.target || c.k === 'J', per = perKind(g), jk = g.opts.joker ? 2 : 0, dvN = g.opts.devil ? 1 : 0, h = g.hands[p];
     let myPlayed = 0, myMatch = 0, myDev = 0; segs.forEach(s => { if (s.by === p) s.cards.forEach(c => { myPlayed++; if (isM(c)) myMatch++; if (c.k === 'D') myDev++; }); });
     const M = Math.max(0, per + jk - h.filter(isM).length - myMatch), N = Math.max(1, per * 3 + jk + dvN - h.length - myPlayed), dens = M / N;
-    let E = 0, Em = 0; for (let i = 0; i < segs.length - 1; i++) { const s = segs[i]; if (s.by === p) continue; const m = s.cards.length, lr = lieRate(g, s.by); E += m; Em += m * ((1 - lr) + lr * dens * .5); }   // earlier claims by others: expected matches already gone
-    const M2 = Math.max(0, Math.round(M - Em)), N2 = Math.max(n, N - E), hb = g.hands[q].length + n;                                           // q's hand before the play, drawn from what is unseen
-    // Bayes over X = how many table cards q held: with a match q usually tells the truth (and plays 1..X cards), without one q must lie; the claim size n is evidence too
-    const lam = lieRate(g, q), sz = stOf(g).sz[q], wt = [2.5 + sz[0], 1.5 + sz[1], 1 + sz[2]], K = Math.min(M2, N2), H = Math.min(hb, N2);
+    let E = 0, Em = 0; for (let i = 0; i < segs.length - 1; i++) { const s = segs[i]; if (s.by === p || s.by === q) continue; const m = s.cards.length, lr = lieRate(g, s.by); E += m; Em += m * ((1 - lr) + lr * dens * .5); }   // earlier claims by others: expected matches already gone
+    const M2 = Math.max(0, Math.round(M - Em)), N2 = Math.max(n, N - E), qSizes = segs.filter(x => x.by === q).map(x => x.cards.length), H0 = g.hands[q].length + qSizes.reduce((a, b) => a + b, 0);   // q's hand at the deal, drawn from what is unseen
+    // q's plays this round (earlier ones may have been unchecked lies): exact DP over which of them were honest, the claim sizes are evidence too
+    const lam = lieRate(g, q), sz = stOf(g).sz[q], wt = [2.5 + sz[0], 1.5 + sz[1], 1 + sz[2]], K = Math.min(M2, N2);
     const szp = (m, cap) => { if (m > cap) return 0; let t = 0; for (let i = 1; i <= Math.min(3, cap); i++) t += wt[i - 1]; return t ? wt[m - 1] / t : 0; };
-    let num = 0, den = 0;
-    for (let X = 0; X <= Math.min(H, K); X++) { const px = hyper(N2, K, H, X); if (!px) continue; const hon = X >= 1 ? 1 - lam : 0; num += px * (1 - hon) * szp(n, H - X); den += px * hon * szp(n, X); }
-    const pLie = Math.max(0, Math.min(.98, den + num > 0 ? num / (num + den) : 1));
+    const pLie = Math.max(0, Math.min(.98, lastLie(N2, K, H0, qSizes, (m, r) => (r >= 1 ? 1 - lam : 0) * szp(m, r), (m, r, f) => (r >= 1 ? lam : 1) * szp(m, f))));
     const dvUnknown = dvN && !h.some(c => c.k === 'D') && !myDev, pD = dvUnknown ? Math.min(pLie, n / N2 * 1.6) : 0;
     return { q, n, pLie, pD };
   }
@@ -190,7 +201,7 @@
     if (need <= 0) return 1; N = Math.max(1, Math.round(N)); K = Math.max(0, Math.min(N, Math.round(K))); d = Math.min(d, N); const hi = Math.min(K, d); if (need > hi) return 0;
     let q = 0; const den = C2(N, d); for (let x = need; x <= hi; x++) q += C2(K, x) * C2(N - K, d - x) / den; return q;
   }
-  const HB = { W: 8, V: .7, eps: .05, pc: .4, margin: .3, bluff: .12, q: .8, devilBoost: 1.6 };
+  const HB = { W: 16, V: .7, eps: .05, pc: .4, margin: -.1, bluff: .12, q: .8, devilBoost: 1.6, trust: .3 };
   function facts(g, p) {                         // what seat p knows about the deck: its own initial hand (cards in hand + cards it already put on the pile)
     const h = g.hands[p], per = perKind(g), jk = g.opts.joker ? 2 : 0, mine = new Set(); (g.plays || []).forEach(x => { if (x.by === p) x.ids.forEach(id => mine.add(id)); });
     const played = g.pile.filter(c => mine.has(c.id)), all = h.concat(played);
@@ -201,18 +212,27 @@
     return Math.max(.05, Math.min(.6, (lies + .8) / (tot + 4)));
   }
   // probability that the last play is a lie (lie) and that it hides the Devil (pD)
-  function suspicion2(g, p) {
-    const L = g.last, f = facts(g, p), acc = L.by, n = L.n, U = Math.max(1, f.T - f.init), Gu = Math.max(0, f.GT - f.myGood);
+  function suspicionRaw(g, p, ex) {
+    const L = g.last, f = facts(g, p), acc = L.by, n = L.n, U = Math.max(1, f.T - f.init), Gu = Math.max(0, f.GT - f.myGood - (ex || 0));
     const plays = g.plays || [], tot = plays.length ? plays.filter(x => x.by === acc).reduce((a, x) => a + x.ids.length, 0) : n;
     const m = Math.max(0, g.pile.length - f.played - tot);                    // cards other players already put down (claimed good, mostly true)
-    const H = hgAtLeast(U - m, Gu - HB.q * m, HAND, tot);                     // chance that acc was dealt enough real table cards for everything it claimed
-    const lam = bluffRate(g, acc), wn = n === 1 ? 1 : n === 2 ? .75 : .55;
-    const honest = H * (1 - lam), lieC = H * lam * wn, forced = 1 - H;
-    const lie = (lieC + forced) / Math.max(1e-9, honest + lieC + forced);
+    const lam = bluffRate(g, acc), wnf = s => s === 1 ? 1 : s === 2 ? .75 : .55;
+    const sizes = plays.filter(x => x.by === acc).map(x => x.ids.length); if (!sizes.length || sizes[sizes.length - 1] !== n) sizes.push(n);
+    // only the LAST play gets turned over; earlier plays of acc may have been unchecked lies, so don't add all its claims up (that was exploitable: 3 fakes, then 1 real card = "impossible" = Liar!)
+    const lie = lastLie(U - m, Gu - HB.q * m, HAND, sizes, () => 1 - lam, (s, r) => (r >= s ? lam : 1) * wnf(s));
     const pD = g.opts.devil && !f.hasD ? Math.min(.5, HB.devilBoost * n / U) : 0;
     return { lie: Math.max(lie, pD), pD };
   }
-  function botHard(g, p) {
+  // Table talk is cheap talk, so a bot only half-believes it: a statement "I hold n table cards" (said this round, about the player it would hit, and possible given that
+  // speaker's hand size) is blended in with weight HB.trust — it shrinks the table cards that are still unseen, which makes the last claim look more suspicious.
+  function suspicion2(g, p, ctx) {
+    const s = suspicionRaw(g, p, 0), L = g.last;
+    const says = ctx && ctx.says ? ctx.says.filter(x => x.round === g.round && x.by !== p && x.n > 0 && (x.to === L.by || x.to === -1) && x.by !== L.by && g.alive[x.by] && x.n <= g.hands[x.by].length) : [];
+    if (!says.length) return s;
+    const best = says.reduce((a, b) => b.n > a.n ? b : a), tru = suspicionRaw(g, p, best.n);
+    return { lie: Math.max(s.pD, s.lie + HB.trust * (tru.lie - s.lie)), pD: s.pD };
+  }
+  function botHard(g, p, ctx) {
     const h = g.hands[p], tgt = g.target, isGood = c => c.k === tgt || c.k === 'J', good = h.filter(isGood), bad = h.filter(c => !isGood(c) && c.k !== 'D'), dv = h.find(c => c.k === 'D');
     if (mustCall(g, p)) return { t: 'call' };
     const al = aliveList(g), a = al.length, R = j => 1 / (CH - gunOf(g, j).pos), V = a === 2 ? 1.5 : HB.V, myCost = R(p) * HB.W + HB.eps;
@@ -221,7 +241,7 @@
     const nx = (() => { for (let k = 1; k < g.n; k++) { const j = (p + k) % g.n; if (g.alive[j] && g.hands[j].length) return j; } return -1; })();
     const pc = nx < 0 ? 1 : HB.pc;
     if (canCall(g, p)) {
-      const s = suspicion2(g, p), acc = g.last.by, pL = s.lie, pD = Math.min(s.pD, pL);
+      const s = suspicion2(g, p, ctx), acc = g.last.by, pL = s.lie, pD = Math.min(s.pD, pL);
       const evCall = -(1 - pL) * myCost + (pL - pD) * R(acc) * V + pD * (sweep(acc) - myCost);
       let evPlay = good.length ? 0 : -pc * myCost; if (dv) evPlay = Math.max(evPlay, pc * sweep(p));
       if (evCall > evPlay + HB.margin) return { t: 'call' };
@@ -235,10 +255,43 @@
     const want = bad.length === 0 && good.length >= 3 ? 2 : 1;               // honest cards one at a time keeps them lasting; a fat truthful play also baits wrong calls
     return out(good.slice(0, want).map(c => c.id));
   }
-  function bot(g, p) {
+
+  // ---- table talk (hard bots only) ----
+  // A bot may say something after a play: the last player reassures / dares the table, any other bot (not the one about to decide) accuses him or announces its hand.
+  // The point is to work on the next player: when it believes the claim is a lie the tip is honest (with its real count of table cards if that impresses),
+  // otherwise it may bluff — a made-up count that is still possible (never more than it holds / the deck has) — hoping the next player calls wrongly and pays for it.
+  // Returns { k: 'acc' | 'hand' | 'sure' | 'dare', p, to, n, v } or null. `lie` (it said something it does not believe / a count it does not have) is for tests only and must never be sent to the other players. ctx.rand / ctx.last (seat -> g.seq of its last line).
+  const hash01 = str => { let h = 2166136261; for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0) / 4294967296; };
+  const persona = (g, p) => ({ chatty: .3 + .45 * hash01(g.id + 'c' + p), deceit: .15 + .5 * hash01(g.id + 'd' + p) });   // stable per bot for the whole game, no state needed
+  function botTalk(g, p, ctx) {
+    ctx = ctx || {}; const R = ctx.rand || Math.random;
+    if (g.opts.botLevel !== 2 || g.phase !== 'play' || !g.last || !g.alive[p] || p === actor(g)) return null;
+    if (ctx.last && ctx.last[p] != null && g.seq - ctx.last[p] < 3) return null;                         // not twice in a row
+    const L = g.last, A = L.by, h = g.hands[p], isGood = c => c.k === g.target || c.k === 'J', pr = persona(g, p), v = Math.floor(R() * 3);
+    if (p === A) {                                                                                     // I just played: a liar reassures, an honest player likes to dare
+      if (R() > pr.chatty * .45) return null;
+      const lied = L.cards.some(c => !isGood(c)), k = (lied ? R() < .75 : R() < .45) ? 'sure' : 'dare';
+      return { k, p, to: A, n: L.n, v };
+    }
+    if (R() > pr.chatty * .7) return null;
+    const f = facts(g, p), goodNow = h.filter(isGood).length, mineOnPile = (g.plays || []).filter(x => x.by === p).reduce((a, x) => a + x.ids.length, 0);
+    const cap = Math.max(0, Math.min(h.length, f.GT - mineOnPile));                                    // most table cards I could believably say I hold
+    const pL = suspicion2(g, p, ctx).lie; let k, n = 0, bluff = false;
+    if (pL >= .5) { k = 'acc'; n = goodNow >= 2 ? goodNow : 0; }                                       // honest tip
+    else if (R() < pr.deceit * .8) {
+      bluff = true; const big = Math.min(cap, goodNow + 2);
+      if (big >= 3 && R() < .3) { k = 'hand'; n = big; }                                              // "I'm sitting on lots of them": every later claim looks thinner
+      else { k = 'acc'; n = cap >= 2 ? Math.min(cap, Math.max(goodNow + 1, 2) + (R() < .3 ? 1 : 0)) : 0; }
+    }   // bluff: I don't believe it, but a wrong call hurts the next player
+    else if (goodNow >= 3 && R() < .5) { k = 'hand'; n = goodNow; }
+    else return null;
+    return { k, p, to: k === 'acc' ? A : -1, n, v, lie: bluff || n > goodNow };
+  }
+
+  function bot(g, p, ctx) {
     if (g.phase === 'trigger') return { t: 'pull' };
     const lv = Math.max(0, Math.min(2, g.opts.botLevel == null ? 1 : g.opts.botLevel)), P = LVL[lv];
-    if (lv === 2) return botHard(g, p);
+    if (lv === 2) return botHard(g, p, ctx);
     if (lv === 1) return botNormal(g, p);
     const h = g.hands[p], good = h.filter(c => c.k === g.target || c.k === 'J'), bad = h.filter(c => !(c.k === g.target || c.k === 'J'));
     if (mustCall(g, p)) return { t: 'call' };
@@ -257,6 +310,6 @@
     return { t: 'play', ids: ids.slice(0, 3) };
   }
 
-  root.Sus = { CHARS, KINDS, MAXP, CH, HAND, DEFAULTS, normSettings, gunOf, newGame, apply, bot, actor, canCall, mustCall, legalPlay, honest, aliveList, nextAlive, suspicion, HB };
+  root.Sus = { CHARS, KINDS, MAXP, CH, HAND, DEFAULTS, normSettings, gunOf, newGame, apply, bot, actor, canCall, mustCall, legalPlay, honest, aliveList, nextAlive, suspicion, HB, botTalk, suspicion2 };
   if (typeof module !== 'undefined') module.exports = root.Sus;
 })(typeof window !== 'undefined' ? window : globalThis);

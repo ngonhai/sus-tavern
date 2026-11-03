@@ -168,3 +168,10 @@ body.mode3d .seat2d{ width:215px; } body.mode3d .seat2d .cards i{ display:none; 
 .banner{ top:46%; }
 
 .sg-ch{ display:inline-flex; gap:3px; vertical-align:middle; margin-left:4px; } .sg-ch i{ width:9px; height:9px; border-radius:50%; background:#e0b04a; border:1px solid #7a5a14; } .sg-ch i.used{ background:#25788a; border-color:#16515f; } #sg-chip{ cursor:pointer; }
+
+/* bot table talk: the last few lines the hard bots said (visible in 2D and 3D; the 2D seat bubbles are hidden in 3D) */
+#talk-feed{ position:fixed; left:12px; top:62px; width:min(340px,46vw); z-index:59; pointer-events:none; display:flex; flex-direction:column; gap:4px; align-items:flex-start; }
+body.mode3d #talk-feed{ left:50%; transform:translateX(-50%); width:min(460px,92vw); align-items:center; }
+@media (max-width:900px){ #talk-feed{ left:50%; transform:translateX(-50%); width:min(460px,94vw); align-items:center; top:56px; } }
+.tline{ background:rgba(5,24,31,.9); color:var(--ink); padding:5px 12px; font-size:.86rem; font-weight:600; border-left:4px solid var(--sc,#ffb547); max-width:100%; animation:tin .25s ease-out, tout .6s ease-in 6.4s forwards; } .tline b{ margin-right:7px; color:var(--sc,#ffb547); }
+@keyframes tin{ from{ opacity:0; transform:translateY(-6px); } } @keyframes tout{ to{ opacity:0; } }
