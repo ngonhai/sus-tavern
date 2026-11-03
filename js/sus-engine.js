@@ -74,7 +74,7 @@
     g.ev = []; g.seq++;
     if (a.t === 'talk') {                       // table talk: a bystander comments on the last play (what it holds + what it thinks). Never changes whose turn it is.
       const at = (g.plays || []).length, mine = (g.talk || []).filter(x => x.at === at), n = a.n | 0;
-      if (g.phase !== 'play' || !g.last || p === g.last.by || p === g.turn || (a.k !== 'doubt' && a.k !== 'trust') || n < 0 || n > g.hands[p].length || mine.length >= 2 || mine.some(x => x.by === p)) { g.seq--; return false; }
+      if (g.phase !== 'play' || !g.last || p === g.last.by || p === g.turn || a.k !== 'doubt' || n < 0 || n > g.hands[p].length || mine.length >= 2 || mine.some(x => x.by === p)) { g.seq--; return false; }
       (g.talk = g.talk || []).push({ by: p, about: g.last.by, k: a.k, n, at, h: g.hands[p].length, ci: g.plays.filter(x => x.by === p).length });
       g.ev.push({ t: 'talk', by: p, about: g.last.by, k: a.k, n, cnt: g.last.n }); return true;
     }
@@ -230,7 +230,7 @@
     for (const x of g.talk || []) if (x.by !== p) (out[x.by] = out[x.by] || []).push(x);
     for (const j in out) {
       const xs = out[j], c = xs[xs.length - 1], lam = bluffRate(g, +j), sz = sizesOf(+j), h = c.h != null ? c.h : g.hands[j].length, ci = c.ci != null ? c.ci : sz.length;
-      let r0 = Math.max(.2, Math.min(.8, .75 - (lam - .2)));
+      let r0 = Math.max(.15, Math.min(.7, HB.hear - (lam - .2)));       // a speaker wants a call out of the decider, so its word is only half-trusted to begin with
       for (let k = 1; k < xs.length; k++) { const a = xs[k - 1], b = xs[k], cards = (a.h != null && b.h != null) ? a.h - b.h : 0; if (b.n > a.n || b.n < a.n - cards) r0 *= .3; }   // a hand can only lose cards
       let rho = 0; if (c.n <= h && c.n <= Gu) {
         const hw = () => 1 - lam, lw = (s2, r) => (r >= s2 ? lam : 1) * (s2 === 1 ? 1 : s2 === 2 ? .75 : .55);
@@ -263,20 +263,16 @@
     const pD = g.opts.devil && !f.hasD ? Math.min(.5, HB.devilBoost * n / U) : 0;
     return { lie: Math.max(lie, pD), pD };
   }
-  // table talk (hard bots): after a play, a bystander may say how many table cards it holds and whether it believes the player. Mostly true, sometimes a bluff aimed at the one who has to decide.
-  Object.assign(HB, { talk: .5, talkLie: .3 });
+  // table talk (hard bots): a bystander speaks only to push the player who must decide into doubting the last play and shouting "Liar!" (the bystander never shoots for that call, so it only gains).
+  // It points at the real cards it holds when it believes the accusation itself, and otherwise bluffs a stronger hand. The comment is public: everyone checks the speaker's own later plays against it.
+  Object.assign(HB, { talk: .5, talkLie: .5, hear: .6 });   // talk: chance a bystander considers speaking; talkLie: how often it bluffs when it does not believe the accusation; hear: starting trust in a speaker
   function botTalk(g, p) {
     if (g.opts.botLevel !== 2 || g.phase !== 'play' || !g.last || !g.alive[p] || p === g.last.by || p === g.turn || rnd(g) > HB.talk) return null;
     const at = (g.plays || []).length, ts = (g.talk || []).filter(x => x.at === at); if (ts.length >= 2 || ts.some(x => x.by === p)) return null;
-    const hl = g.hands[p].length, good = g.hands[p].filter(c => c.k === g.target || c.k === 'J').length, doubt = suspicion2(g, p).lie >= .5;
-    // A comment is public and everyone measures my later plays against it, so admitting "I hold almost nothing" would announce that my next plays are lies:
-    // a weak hand stays quiet or bluffs strong, and a strong hand may understate to set a trap (then plays its real cards and lets the others call a true play).
-    if (rnd(g) < HB.talkLie) {
-      if (good <= 1 && hl > good) return { t: 'talk', k: 'doubt', n: Math.min(hl, good + 2 + ri(g, 2)) };
-      if (good >= 3) return { t: 'talk', k: 'trust', n: good - 2 };
-    }
-    if (doubt && good >= 1) return { t: 'talk', k: 'doubt', n: good };
-    if (!doubt && good >= 2) return { t: 'talk', k: 'trust', n: good };
+    const hl = g.hands[p].length, good = g.hands[p].filter(c => c.k === g.target || c.k === 'J').length, s = suspicion2(g, p);
+    if (s.pD >= .25) return null;                                              // the play may hide the Devil: a call would make the bystander shoot too
+    if (s.lie >= .5 && good >= 1) return { t: 'talk', k: 'doubt', n: good };   // it believes it and has real cards to point to
+    if (s.lie >= .25 && hl > good && rnd(g) < HB.talkLie) return { t: 'talk', k: 'doubt', n: Math.min(hl, good + 2 + ri(g, 2)) };   // bluff: a fatter hand makes the accusation convincing
     return null;
   }
   function botHard(g, p) {
@@ -286,7 +282,6 @@
     const sweep = (skip) => { const o = al.filter(j => j !== skip && j !== p); return g.opts.shared ? Math.min(o.length, CH - gunOf(g, p).pos - 1) * R(p) * V : o.reduce((x, j) => x + R(j) * V, 0); };   // value of a Devil sweep for me: everybody but the Devil's owner (and me) shoots
     // next player to act after me: if nobody else holds a card the play is turned over at once; otherwise it is called about HB.pc of the time
     const nx = (() => { for (let k = 1; k < g.n; k++) { const j = (p + k) % g.n; if (g.alive[j] && g.hands[j].length) return j; } return -1; })();
-    const said = g.talk && g.talk.filter(x => x.by === p).pop(), trap = !!said && good.length > said.n;     // I understated my hand: now play the real cards and let a true play get called
     let pc = nx < 0 ? 1 : HB.pc; if (nx >= 0 && g.talk) { const c = g.talk.filter(x => x.by === nx).pop(); if (c) pc = Math.max(.1, Math.min(.85, pc + (c.n >= 3 ? .25 : c.n <= 1 ? -.15 : 0))); }   // a next player who boasts a fat hand will doubt my claims
     if (canCall(g, p)) {
       const s = suspicion2(g, p), acc = g.last.by, pL = s.lie, pD = Math.min(s.pD, pL);
@@ -300,7 +295,7 @@
     if (dv && (!good.length || g.pile.length >= 3 || h.length <= 2 || rnd(g) < .25)) { const ids = [dv.id]; bad.slice(0, rnd(g) < .5 ? 2 : 1).forEach(c => ids.push(c.id)); return out(ids); }
     const lie = !good.length || (bad.length > good.length + 1 && rnd(g) < HB.bluff);
     if (lie) { const ids = []; bad.slice(0, bad.length >= 2 && rnd(g) < .2 ? 2 : 1).forEach(c => ids.push(c.id)); if (!ids.length) ids.push(h[0].id); return out(ids); }
-    const want = trap ? Math.min(3, good.length) : bad.length === 0 && good.length >= 3 ? 2 : 1;               // honest cards one at a time keeps them lasting; a fat truthful play also baits wrong calls
+    const want = bad.length === 0 && good.length >= 3 ? 2 : 1;               // honest cards one at a time keeps them lasting; a fat truthful play also baits wrong calls
     return out(good.slice(0, want).map(c => c.id));
   }
   function bot(g, p) {

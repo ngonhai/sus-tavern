@@ -159,7 +159,7 @@
   // ---------------------------------------------------------------- event player ----
   function say(txt, cls, sub) { const b = $('banner'); b.className = 'banner ' + (cls || ''); b.innerHTML = txt ? '<span>' + txt + (sub ? '<small>' + sub + '</small>' : '') + '</span>' : ''; }
   function floatAt(i, txt, col) { const el = document.querySelector('.seat2d[data-i="' + i + '"]'); const r = el ? el.getBoundingClientRect() : { left: innerWidth / 2, top: 120, width: 0, height: 0 }; const f = document.createElement('div'); f.className = 'float'; f.textContent = txt; f.style.left = (r.left + r.width / 2) + 'px'; f.style.top = (r.top + 10) + 'px'; if (col) f.style.color = col; $('fx').appendChild(f); setTimeout(() => f.remove(), 1300); }
-  function bubble(i, txt, ms) { const el = $('say-' + i); if (!el) return; el.textContent = txt; el.classList.add('on'); clearTimeout(bubble['t' + i]); bubble['t' + i] = setTimeout(() => el.classList.remove('on'), ms || 1800); }
+  function bubble(i, txt, ms, cls) { const el = $('say-' + i); if (!el) return; el.textContent = txt; el.classList.toggle('talk', cls === 'talk'); el.classList.add('on'); clearTimeout(bubble['t' + i]); bubble['t' + i] = setTimeout(() => el.classList.remove('on'), ms || 1800); }
   function setExpr(i, ex, ms) { U.expr[i] = ex; if (U.d3) S3().setExpr(i, ex); const av = document.querySelector('.seat2d[data-i="' + i + '"] .av'); if (av) av.innerHTML = Art.avatar(U.view.chars[i], U.view.alive[i] ? ex : 'dead'); clearTimeout(setExpr['t' + i]); if (ms) setExpr['t' + i] = setTimeout(() => { U.expr[i] = 'neutral'; if (U.d3) S3().setExpr(i, U.view && U.view.alive[i] ? 'neutral' : 'dead'); const a2 = document.querySelector('.seat2d[data-i="' + i + '"] .av'); if (a2 && U.view) a2.innerHTML = Art.avatar(U.view.chars[i], U.view.alive[i] ? 'neutral' : 'dead'); }, ms); }
   function shake() { document.body.classList.remove('shake'); void document.body.offsetWidth; document.body.classList.add('shake'); setTimeout(() => document.body.classList.remove('shake'), 520); }
   function flashScreen(col) { const f = $('flash-screen'); f.style.background = col; if (reduce()) return; f.animate([{ opacity: .75 }, { opacity: 0 }], { duration: 450 }); }
@@ -186,9 +186,9 @@
         U.claim = t('claims', { n: nm(e.by), k: e.n, c: t('cardName')[g.target] }).replace(/<[^>]+>/g, ''); Snd.play('card'); bubble(e.by, t('claims', { n: '', k: e.n, c: t('cardShort')[g.target] }).trim(), 1600); setExpr(e.by, 'smug', 900);
         if (U.d3) await S3().playCards(e.by, e.ids, e.n); else await flyCards(e.by, e.n); const c = $('center'); if (c) { const cl = c.querySelector('.claim-big'); if (cl) cl.textContent = U.claim; } await sleep(260); break;
       }
-      case 'talk': {
-        const key = e.k === 'doubt' ? 'talkDoubt' : e.n ? 'talkTrust' : 'talkTrust0';
-        say('<b>' + nm(e.by) + ':</b> ' + esc(tr(key, { a: g.names[e.about], n: e.n, k: e.cnt, c: t('cardShort')[g.target] })), 'talk'); setExpr(e.by, 'smug', 1800); Snd.play('select'); await sleep(reduce() ? 900 : 2300); break;
+      case 'talk': {                       // 2D: a bubble over the avatar; 3D: a board above the head that turns with the camera
+        const text = tr('talkDoubt', { a: g.names[e.about], n: e.n, k: e.cnt, c: t('cardShort')[g.target] }), ms = reduce() ? 2500 : 4200;
+        bubble(e.by, text, ms, 'talk'); if (U.d3) S3().say(e.by, text, ms); setExpr(e.by, 'smug', 1800); Snd.play('select'); await sleep(reduce() ? 900 : 2300); break;
       }
       case 'call': {
         if (e.auto) { say(t('autoReveal', { n: nm(e.acc) }), 'warn'); setExpr(e.acc, 'scared', 2000); await sleep(900); }

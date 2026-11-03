@@ -386,6 +386,36 @@ const S3D = (function () {
       else { f.t += dt; const m = f.m; m.scale.setScalar(f.t < .15 ? .3 + f.t / .15 * .7 : 1); const fade = f.life - 2.5; if (f.t > fade) m.material.opacity = Math.max(0, .92 * (1 - (f.t - fade) / 2.5)); if (f.t >= f.life) { scene.remove(m); fxs.splice(i, 1); } } }
   }
 
+  // ---------------------------------------------------------------- speech boards ----
+  // A flat 2D board above the speaker's head. It follows the player's camera (so it always reads) but is blended with the way the speaker faces the table, so it keeps a slight
+  // angle and sways as the camera moves, like a sign standing in the room instead of a sticker on the lens.
+  const boards = [];
+  const lerpA = (a, b, k) => { const d = ((b - a + Math.PI) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2) - Math.PI; return a + d * k; };
+  function say(s, text, ms) {
+    const P = players[s]; if (!ok || !P || P.dead) return;
+    for (let i = boards.length - 1; i >= 0; i--) if (boards[i].s === s) dropBoard(i);
+    const W = 640, H = 320, c = document.createElement('canvas'); c.width = W; c.height = H; const x = c.getContext('2d');
+    x.font = '700 42px "Be Vietnam Pro", system-ui, sans-serif'; const lines = []; let ln = '';
+    String(text).split(' ').forEach(w => { const t = ln ? ln + ' ' + w : w; if (ln && x.measureText(t).width > W - 100) { lines.push(ln); ln = w; } else ln = t; }); lines.push(ln);
+    const lh = 52, bh = Math.min(H - 44, lines.length * lh + 34), bot = H - 30, top = bot - bh;
+    x.lineWidth = 6; x.strokeStyle = '#2a1a14'; x.fillStyle = '#f6ead2'; x.beginPath(); x.roundRect ? x.roundRect(8, top, W - 16, bh, 26) : x.rect(8, top, W - 16, bh); x.fill(); x.stroke();
+    x.beginPath(); x.moveTo(W / 2 - 24, bot); x.lineTo(W / 2, H - 4); x.lineTo(W / 2 + 24, bot); x.closePath(); x.fill(); x.stroke(); x.fillRect(W / 2 - 20, bot - 5, 40, 9);   // tail toward the head
+    x.fillStyle = '#2a1a14'; x.textAlign = 'center'; x.textBaseline = 'middle'; lines.forEach((l, i) => x.fillText(l, W / 2, top + 17 + lh / 2 + i * lh));
+    const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 4;
+    const ww = .66, wh = ww * H / W, mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: 0, depthTest: false, depthWrite: false });
+    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(ww, wh), mat); mesh.position.y = wh / 2; mesh.renderOrder = 9;
+    const grp = new THREE.Group(); grp.rotation.order = 'YXZ'; grp.add(mesh); scene.add(grp); boards.push({ s, grp, mesh, mat, tex, t0: performance.now(), ms: ms || 3500 });
+  }
+  function dropBoard(i) { const b = boards[i]; scene.remove(b.grp); b.mesh.geometry.dispose(); b.mat.dispose(); b.tex.dispose(); boards.splice(i, 1); }
+  function stepBoards(now) {
+    for (let i = boards.length - 1; i >= 0; i--) {
+      const b = boards[i], P = players[b.s], age = now - b.t0; if (!P || P.dead || age > b.ms) { dropBoard(i); continue; }
+      const hd = P.head.getWorldPosition(V(0, 0, 0)); b.grp.position.set(hd.x, hd.y + headR[P.char] * SP[P.char].head + .1, hd.z);
+      const toCam = Math.atan2(cam.position.x - hd.x, cam.position.z - hd.z), toMid = Math.atan2(-hd.x, -hd.z);
+      b.grp.rotation.y = lerpA(toCam, toMid, .35); b.grp.rotation.x = -Math.min(.3, Math.max(0, (cam.position.y - hd.y) * .12));
+      const pop = Math.min(1, age / 180), out = Math.min(1, (b.ms - age) / 260), k = Math.min(pop, out); b.mat.opacity = k; b.grp.scale.setScalar(.7 + .3 * Math.min(1, pop * 1.15));
+    }
+  }
   // ---------------------------------------------------------------- camera ----
   function camTarget() {
     if (view.mode === 'side' || !SEAT.length) { const t = performance.now() / 1000, a = t * .08; return { pos: V(Math.sin(a) * 2.7, 1.9, Math.cos(a) * 2.7), look: V(0, TY + .15, 0), fov: 50 }; }
@@ -428,7 +458,7 @@ const S3D = (function () {
     cards.forEach(r => { if (r.busy || r.owner !== viewSeat() || r.inPile || !r.home) return; const want = (selIds.has(r.id) ? .06 : 0) + (hoverId === r.id ? .025 : 0); r.mesh.position.y += (r.home.pos.y + want - r.mesh.position.y) * Math.min(1, dt * 14); });
     tcard.position.y = TY + .32 + tcOff + Math.sin(t * 1.6) * .012; tcard.rotation.y = Math.atan2(cam.position.x - tcard.position.x, cam.position.z - tcard.position.z);
     { const hr = hoverId != null ? cards.get(hoverId) : null; if (hr) { glow.position.copy(hr.mesh.position).add(V(0, .02, 0)); glow.visible = true; } glowA += ((hr ? .35 : 0) - glowA) * Math.min(1, dt * 10); glow.material.opacity = glowA; if (glowA < .01 && !hr) glow.visible = false; }
-    updateCamera(dt, t); renderer.render(scene, cam);
+    updateCamera(dt, t); stepBoards(now); renderer.render(scene, cam);
   }
   function resize() { if (!renderer) return; const w = wrap.clientWidth || innerWidth, h = wrap.clientHeight || innerHeight; renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 1.5)); renderer.setSize(w, h, false); cam.aspect = w / h; cam.updateProjectionMatrix(); }
   function init(container) {
@@ -445,6 +475,6 @@ const S3D = (function () {
   }
   function start() { if (!ok || running) return; running = true; resize(); lastT = performance.now(); raf = requestAnimationFrame(frame); }
   function stop() { running = false; cancelAnimationFrame(raf); clearInterval(hidT); }
-  return { passGun, dbg: () => guns.map(g => [g.position.x, g.position.y, g.position.z, !!g.userData.held]), err: () => lastErr, init, setup, sync, start, stop, setView, setSelected, setExpr, deal, playCards, shout, reveal, pullStart, pullEnd, slam, point, onPick: f => { cb.pick = f; }, onHover: f => { cb.hover = f; }, isOk: () => ok };
+  return { passGun, dbg: () => guns.map(g => [g.position.x, g.position.y, g.position.z, !!g.userData.held]), err: () => lastErr, init, setup, sync, start, stop, setView, setSelected, setExpr, say, deal, playCards, shout, reveal, pullStart, pullEnd, slam, point, onPick: f => { cb.pick = f; }, onHover: f => { cb.hover = f; }, isOk: () => ok };
 })();
 window.S3D = S3D;
