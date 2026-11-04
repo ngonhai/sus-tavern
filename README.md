@@ -52,3 +52,11 @@ It stays quiet when the play may hide the Devil (a call would make the bystander
 ## Log scroll (3D) and 2D revolver
 - 3D: the side panel lets clicks through to the scene, but the log box (`.log-wrap`) takes pointer events again so it scrolls with the wheel / touch (`overscroll-behavior: contain`). The log keeps its scroll position when the game state re-renders.
 - 2D: while the trigger is pulled (`case 'pull'` in sus-ui.js) a revolver (inline SVG, `gun2dAim`) slides in from the table centre along the line to the avatar and presses its muzzle against the head; it trembles with every beat, the hammer is cocked, then it either fires (muzzle flash, recoil, blood) or only clicks (spark). 3D keeps its own 3D revolver.
+
+## Lobby rule icons + "Bot talk" option
+- Every rule row in the lobby (and the in-game rules box) has a small SVG icon (`RULE_IC` in sus-ui.js): the Devil and Joker icons are the deck's own card art (`Art.cardURL('D'/'J')`, so they always match the real cards); number of bots, shared gun (two hands + an upright revolver), bot difficulty (bars) and bot talk (chat bubble) are small inline SVGs.
+- New setting `talk` (default ON, normalised to a boolean in `Sus.normSettings`, synced like the other rules). With it on, bots of ANY level can talk (`Sus.canTalk(g)`); with it off nobody talks. Games saved before the option existed (no `opts.talk`) keep the old behaviour: only hard bots talk.
+- Weaker bots talk more carelessly (`TALKLV` in the engine): easy speaks less often, misjudges whether the play is a lie (noise) and bluffs more; hard is unchanged. Only hard bots *weigh* what they hear (`suspicion2`, `pc` in `botHard`).
+
+## Text selection
+Almost all text is not selectable (`user-select:none` on html/body). Still selectable: the game log (`#log-panel`), text fields / selects and the room code. The sub line of `.banner.warn` / `.banner.good` uses dark brown / dark green instead of the light grey, which was unreadable on the yellow "Round N" banner.

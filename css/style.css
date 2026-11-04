@@ -181,3 +181,17 @@ body.mode3d .log-wrap{ pointer-events:auto; }
 .gun2d{ position:fixed; left:0; top:0; width:230px; height:120px; transform-origin:0 0; z-index:75; pointer-events:none; }
 .gun2d .g2in{ width:230px; height:120px; transform-origin:226px 45px; } .gun2d svg{ display:block; overflow:visible; filter:drop-shadow(0 5px 3px rgba(0,0,0,.55)); }
 .gun2d .hammer{ transform-box:fill-box; transform-origin:85% 100%; } .gun2d .flash{ transform-box:view-box; transform-origin:226px 45px; opacity:0; } .gun2d .spark{ transform-box:fill-box; transform-origin:center; opacity:0; }
+
+/* lobby rules: a small icon in front of every option */
+.rule-main{ display:flex; align-items:center; gap:11px; min-width:0; }
+.rule-ic{ flex:none; width:54px; height:54px; display:grid; place-items:center; background:rgba(0,0,0,.28); border:1px solid rgba(255,255,255,.14); border-radius:10px; box-shadow:0 2px 0 rgba(0,0,0,.35); }
+.rule-ic svg{ width:44px; height:44px; display:block; }
+.rule-ic .rule-card{ height:48px; width:auto; display:block; transform:rotate(-5deg); filter:drop-shadow(0 2px 2px rgba(0,0,0,.55)); }
+
+/* the sub line of a banner must stay readable on its coloured background (it was light grey on the yellow "Round N" banner) */
+.banner.warn small{ color:#4d2f00; font-weight:700; font-size:.95rem; } .banner.good small{ color:#0a4a40; font-weight:700; font-size:.95rem; }
+
+/* almost no text is selectable (it is a game, not a document); the game log, text fields and the room code stay selectable so they can be copied */
+html,body{ -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; }
+input, textarea, select, #log-panel, #log-panel *, #room-code-display{ -webkit-user-select:text; user-select:text; }
+img{ -webkit-user-drag:none; }

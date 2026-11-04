@@ -7,8 +7,8 @@
 (function (root) {
   'use strict';
   const CHARS = ['pig', 'fox', 'dog', 'goat', 'octo', 'penguin', 'hawk', 'turtle'], KINDS = ['A', 'K', 'Q'], MAXP = 5, CH = 6, HAND = 5;
-  const DEFAULTS = { devil: false, joker: false, shared: false, bots: 3, botLevel: 1 };   // joker: the 2 wild star cards (off by default); shared: ONE revolver for the whole table   // botLevel: 0 easy, 1 normal, 2 hard
-  function normSettings(s) { s = Object.assign({}, DEFAULTS, s || {}); s.devil = !!s.devil; s.joker = !!s.joker; s.shared = !!s.shared; s.bots = Math.max(1, Math.min(MAXP - 1, Math.round(+s.bots || 3))); s.botLevel = Math.max(0, Math.min(2, Math.round(+s.botLevel == null || isNaN(+s.botLevel) ? 1 : +s.botLevel))); return s; }
+  const DEFAULTS = { devil: false, joker: false, shared: false, bots: 3, botLevel: 1, talk: true };   // joker: the 2 wild star cards (off by default); shared: ONE revolver for the whole table   // botLevel: 0 easy, 1 normal, 2 hard   // talk: bots comment on the last play (chat bubbles); any level can talk, only hard bots weigh what they hear
+  function normSettings(s) { s = Object.assign({}, DEFAULTS, s || {}); s.devil = !!s.devil; s.joker = !!s.joker; s.shared = !!s.shared; s.talk = !!s.talk; s.bots = Math.max(1, Math.min(MAXP - 1, Math.round(+s.bots || 3))); s.botLevel = Math.max(0, Math.min(2, Math.round(+s.botLevel == null || isNaN(+s.botLevel) ? 1 : +s.botLevel))); return s; }
 
   // mulberry32, state kept in g.rs
   function rnd(g) { let a = (g.rs = (g.rs + 0x6D2B79F5) >>> 0); a = Math.imul(a ^ (a >>> 15), a | 1); a ^= a + Math.imul(a ^ (a >>> 7), a | 61); return ((a ^ (a >>> 14)) >>> 0) / 4294967296; }
@@ -267,13 +267,18 @@
   // Two kinds of line: "I hold n table cards, so they are lying" (n >= 2: saying "I hold 1" would only advertise a weak hand, so a weak hand makes a plain accusation instead) and a plain accusation.
   // The count is public: everyone checks the speaker's own later plays against it. A bluff quotes a fatter hand than the real one (always a possible count) or just applies pressure.
   Object.assign(HB, { talk: .5, talkLie: .5, hear: .6 });   // talk: chance a bystander considers speaking; talkLie: how often it bluffs when it does not believe the accusation; hear: starting trust in a speaker
+  const canTalk = g => g.opts.talk == null ? g.opts.botLevel === 2 : !!g.opts.talk;   // games saved before the option existed: only hard bots talked
+  // every level can talk, but the weaker the bot the sloppier it is: it speaks less often, misjudges whether the play is a lie (so it sometimes accuses an honest play or stays quiet about a fake) and bluffs more
+  const TALKLV = [{ chance: .7, noise: .7, lie: 1.4 }, { chance: .9, noise: .35, lie: 1.1 }, { chance: 1, noise: 0, lie: 1 }];
   function botTalk(g, p) {
-    if (g.opts.botLevel !== 2 || g.phase !== 'play' || !g.last || !g.alive[p] || p === g.last.by || p === g.turn || rnd(g) > HB.talk) return null;
+    const lv = Math.max(0, Math.min(2, g.opts.botLevel == null ? 1 : g.opts.botLevel)), T = TALKLV[lv];
+    if (!canTalk(g) || g.phase !== 'play' || !g.last || !g.alive[p] || p === g.last.by || p === g.turn || rnd(g) > HB.talk * T.chance) return null;
     const at = (g.plays || []).length, ts = (g.talk || []).filter(x => x.at === at); if (ts.length >= 2 || ts.some(x => x.by === p)) return null;
     const hl = g.hands[p].length, good = g.hands[p].filter(c => c.k === g.target || c.k === 'J').length, s = suspicion2(g, p), v = ri(g, 1000);
     if (s.pD >= .25) return null;                                              // the play may hide the Devil: a call would make the bystander shoot too
-    if (s.lie >= .5) return { t: 'talk', k: 'doubt', n: good >= 2 ? good : 0, v };   // it believes the accusation: quote its real hand if that is strong, else just say so
-    if (s.lie >= .25 && rnd(g) < HB.talkLie) return { t: 'talk', k: 'doubt', n: hl >= 2 && rnd(g) < .6 ? Math.min(hl, Math.max(2, good + 1 + ri(g, 2))) : 0, v };   // bluff
+    const lie = T.noise ? Math.max(0, Math.min(1, s.lie + (rnd(g) - .5) * T.noise)) : s.lie;
+    if (lie >= .5) return { t: 'talk', k: 'doubt', n: good >= 2 ? good : 0, v };   // it believes the accusation: quote its real hand if that is strong, else just say so
+    if (lie >= .25 && rnd(g) < Math.min(1, HB.talkLie * T.lie)) return { t: 'talk', k: 'doubt', n: hl >= 2 && rnd(g) < .6 ? Math.min(hl, Math.max(2, good + 1 + ri(g, 2))) : 0, v };   // bluff
     return null;
   }
   function botHard(g, p) {
@@ -321,6 +326,6 @@
     return { t: 'play', ids: ids.slice(0, 3) };
   }
 
-  root.Sus = { CHARS, KINDS, MAXP, CH, HAND, DEFAULTS, normSettings, gunOf, newGame, apply, bot, actor, canCall, mustCall, legalPlay, honest, aliveList, nextAlive, suspicion, suspicion2, HB, botTalk };
+  root.Sus = { CHARS, KINDS, MAXP, CH, HAND, DEFAULTS, normSettings, gunOf, newGame, apply, bot, actor, canCall, mustCall, legalPlay, honest, aliveList, nextAlive, suspicion, suspicion2, canTalk, HB, botTalk };
   if (typeof module !== 'undefined') module.exports = root.Sus;
 })(typeof window !== 'undefined' ? window : globalThis);

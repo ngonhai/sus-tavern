@@ -141,4 +141,27 @@ for (const devil of [false, true]) for (let sd = 0; sd < 30; sd++) { // whole ga
   while (g.phase !== 'over' && steps++ < 4000) { const p = Sus.actor(g); if (g.phase === 'play' && g.last && !(g.talk || []).some(x => x.at === g.plays.length)) { const c = Sus.aliveList(g).filter(j => j !== g.last.by && j !== p)[0]; const ta = c != null && Sus.botTalk(g, c); if (ta) { ok(Sus.apply(g, c, ta), 'botTalk is always legal ' + JSON.stringify(ta)); talks++; } }
     if (!Sus.apply(g, p, Sus.bot(g, p))) { ok(false, 'bot illegal while chatting'); break; } }
   ok(g.phase === 'over', 'chatting game ends'); }
+
+// ---- option "bot talk": on/off, any bot level can talk, the weaker the bot the sloppier ----
+{ ok(Sus.normSettings({}).talk === true && Sus.normSettings({ talk: false }).talk === false && Sus.normSettings({ talk: 0 }).talk === false && Sus.normSettings({ talk: 1 }).talk === true, 'talk option: default on, normalised to a boolean');
+  const legacy = lv => { const g = Sus.newGame(['a', 'b', 'c'], { botLevel: lv }, 5); delete g.opts.talk; return g; };
+  ok(Sus.canTalk(legacy(2)) && !Sus.canTalk(legacy(1)) && !Sus.canTalk(legacy(0)), 'games saved before the option existed: only hard bots talk');
+  const stats = { 0: 0, 1: 0, 2: 0 }, offTalk = { 0: 0, 1: 0, 2: 0 }, bad = { n: 0 }; const hb = [Sus.HB.talk, Sus.HB.talkLie]; Sus.HB.talk = 1;
+  for (const lv of [0, 1, 2]) for (const on of [true, false]) for (let sd = 0; sd < 25; sd++) {
+    const g = Sus.newGame(['a', 'b', 'c', 'd'], { botLevel: lv, talk: on, devil: sd % 2 === 0 }, 8000 + sd * 7 + lv); let steps = 0;
+    while (g.phase !== 'over' && steps++ < 600) {
+      const p = Sus.actor(g);
+      if (g.phase === 'play' && g.last && !(g.talk || []).some(x => x.at === g.plays.length)) {
+        for (let c = 0; c < 4; c++) { if (c === p || !g.alive[c]) continue; const copy = JSON.parse(JSON.stringify(g)), act = Sus.botTalk(copy, c);
+          if (act) { if (!on) offTalk[lv]++; else { stats[lv]++; const t2 = JSON.parse(JSON.stringify(g)); if (!Sus.apply(t2, c, act)) bad.n++; } break; } }
+      }
+      if (!Sus.apply(g, p, Sus.bot(g, p))) { ok(false, 'illegal move with talk option'); break; }
+    }
+  }
+  Sus.HB.talk = hb[0]; Sus.HB.talkLie = hb[1];
+  console.log('talk lines (HB.talk=1) easy/normal/hard:', stats[0], stats[1], stats[2]);
+  ok(offTalk[0] + offTalk[1] + offTalk[2] === 0, 'with the option off nobody talks, at any level');
+  ok(stats[0] > 100 && stats[1] > 100 && stats[2] > 100, 'easy, normal and hard bots all talk when the option is on');
+  ok(bad.n === 0, 'every line a bot of any level produces is a legal action'); ok(stats[2] >= stats[1] && stats[1] >= stats[0], 'the weaker the bot, the less it talks'); }
+
 if (fails) { console.error(fails + ' failures'); process.exit(1); } else console.log('engine tests passed');

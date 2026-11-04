@@ -34,15 +34,28 @@
     if (U.screen === 'game' && U.view) renderGame(U.view);
   }
   const seg = (key, opts, cur, edit) => '<div class="seg">' + opts.map(o => '<button type="button" class="seg-btn' + (String(cur) === String(o[0]) ? ' on' : '') + '" data-k="' + key + '" data-v="' + o[0] + '"' + (edit ? '' : ' disabled') + '>' + o[1] + '</button>').join('') + '</div>';
+  // small icon per rule: the real Devil / Joker card art of the deck, inline SVG (48x48) for number of bots, shared revolver (two hands + one upright revolver), bot level, bot talk
+  const IC = (body) => '<svg viewBox="0 0 48 48" aria-hidden="true"><g stroke="#2a1a14" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round">' + body + '</g></svg>';
+  const RULE_IC = {
+    devil: () => '<img class="rule-card" alt="" src="' + curl('D') + '">',        // the real cards of the deck (Art.cardURL), not a drawing
+    bots: IC([3, 18, 33].map(x => '<path d="M' + (x + 6) + ' 15 V10" fill="none"/><circle cx="' + (x + 6) + '" cy="9" r="2" fill="#ffb547"/><rect x="' + x + '" y="15" width="12" height="15" rx="3.5" fill="#9ec5d0"/><circle cx="' + (x + 3.8) + '" cy="21" r="2" fill="#fff" stroke-width="1.4"/><circle cx="' + (x + 8.2) + '" cy="21" r="2" fill="#fff" stroke-width="1.4"/><path d="M' + (x + 3.5) + ' 26.5 H' + (x + 8.5) + '" fill="none" stroke-width="1.8"/>').join('') + '<path d="M6 40 H42" fill="none" stroke-width="2.6" opacity=".55"/>'),
+    shared: IC('<path d="M2 27 Q2 22 7 22 L17 24 L17 33 L7 35 Q2 35 2 30 Z" fill="#f1c6a0"/><path d="M9 24.5 V33.5 M12.5 25 V33" fill="none" stroke-width="1.5"/><path d="M46 27 Q46 22 41 22 L31 24 L31 33 L41 35 Q46 35 46 30 Z" fill="#f1c6a0"/><path d="M39 24.5 V33.5 M35.5 25 V33" fill="none" stroke-width="1.5"/><rect x="22" y="3" width="4" height="17" rx="1.5" fill="#a9bcc4"/><rect x="19" y="19" width="10" height="12" rx="3" fill="#c4d3d8"/><path d="M24 20 V30" fill="none" stroke-width="1.5"/><path d="M21 31 L28 31 L30 44 Q27 46.5 22 45 Z" fill="#a0602f"/><path d="M20 32 Q19 38 25 37" fill="none" stroke-width="1.8"/>'),
+    joker: () => '<img class="rule-card" alt="" src="' + curl('J') + '">',
+    botLevel: IC('<rect x="7" y="30" width="9" height="12" rx="2" fill="#4ade80"/><rect x="19.5" y="21" width="9" height="21" rx="2" fill="#ffb547"/><rect x="32" y="10" width="9" height="32" rx="2" fill="#ff5d5d"/>'),
+    talk: IC('<path d="M9 8 H39 Q44 8 44 13 V27 Q44 32 39 32 H25 L15 41 V32 H9 Q4 32 4 27 V13 Q4 8 9 8 Z" fill="#f6f0e2"/><circle cx="15" cy="20" r="2.6" fill="#2a1a14" stroke="none"/><circle cx="24" cy="20" r="2.6" fill="#2a1a14" stroke="none"/><circle cx="33" cy="20" r="2.6" fill="#2a1a14" stroke="none"/>')
+  };
+  const ruleRow = (ic, ttl, desc, ctl) => '<div class="rule-row"><div class="rule-main"><span class="rule-ic">' + (typeof RULE_IC[ic] === 'function' ? RULE_IC[ic]() : RULE_IC[ic]) + '</span><div><b>' + t(ttl) + '</b><p>' + t(desc) + '</p></div></div>' + ctl + '</div>';
   function rulesHTML(s, edit, offline) {
-    let h = '<div class="rule-row"><div><b>' + t('rDevil') + '</b><p>' + t('rDevilD') + '</p></div>' + seg('devil', [[0, t('offS')], [1, t('on')]], s.devil ? 1 : 0, edit) + '</div>';
-    if (offline) h += '<div class="rule-row"><div><b>' + t('rBots') + '</b><p>' + t('rBotsD') + '</p></div>' + seg('bots', [[1, '1'], [2, '2'], [3, '3'], [4, '4']], s.bots, edit) + '</div>';
-    h += '<div class="rule-row"><div><b>' + t('rShared') + '</b><p>' + t('rSharedD') + '</p></div>' + seg('shared', [[0, t('offS')], [1, t('on')]], s.shared ? 1 : 0, edit) + '</div>';
-    h += '<div class="rule-row"><div><b>' + t('rJoker') + '</b><p>' + t('rJokerD') + '</p></div>' + seg('joker', [[0, t('offS')], [1, t('on')]], s.joker ? 1 : 0, edit) + '</div>';
-    h += '<div class="rule-row"><div><b>' + t('rBotLv') + '</b><p>' + t('rBotLvD') + '</p></div>' + seg('botLevel', [[0, t('lvEasy')], [1, t('lvNormal')], [2, t('lvHard')]], s.botLevel, edit) + '</div>';
+    const onoff = (k, v) => seg(k, [[0, t('offS')], [1, t('on')]], v ? 1 : 0, edit);
+    let h = ruleRow('devil', 'rDevil', 'rDevilD', onoff('devil', s.devil));
+    if (offline) h += ruleRow('bots', 'rBots', 'rBotsD', seg('bots', [[1, '1'], [2, '2'], [3, '3'], [4, '4']], s.bots, edit));
+    h += ruleRow('shared', 'rShared', 'rSharedD', onoff('shared', s.shared));
+    h += ruleRow('joker', 'rJoker', 'rJokerD', onoff('joker', s.joker));
+    h += ruleRow('botLevel', 'rBotLv', 'rBotLvD', seg('botLevel', [[0, t('lvEasy')], [1, t('lvNormal')], [2, t('lvHard')]], s.botLevel, edit));
+    h += ruleRow('talk', 'rTalk', 'rTalkD', onoff('talk', s.talk));
     return h;
   }
-  function wireRules(root, apply) { root.querySelectorAll('.seg-btn').forEach(b => { b.onclick = () => { if (b.disabled) return; Snd.play('click'); let v = b.dataset.v; v = ['devil', 'joker', 'shared'].includes(b.dataset.k) ? v === '1' : +v; apply(b.dataset.k, v); }; }); }
+  function wireRules(root, apply) { root.querySelectorAll('.seg-btn').forEach(b => { b.onclick = () => { if (b.disabled) return; Snd.play('click'); let v = b.dataset.v; v = ['devil', 'joker', 'shared', 'talk'].includes(b.dataset.k) ? v === '1' : +v; apply(b.dataset.k, v); }; }); }
   function offRules() { $('off-rules').innerHTML = rulesHTML(U.settings, true, true); wireRules($('off-rules'), (k, v) => { U.settings[k] = v; U.settings = Sus.normSettings(U.settings); offRules(); }); }
 
   // ---------------------------------------------------------------- lobby / waiting ----
@@ -316,7 +329,7 @@
   // hard bots may comment on the play that was just made before the next player decides (host only, so every write to the table comes from one client; at most one comment per play)
   function chatSoon(g, a) {
     clearTimeout(U.talkT); const room = Net.room(), online = Net.mode() === 'online';
-    if (g.opts.botLevel !== 2 || g.phase !== 'play' || !g.last || (g.talk || []).some(x => x.at === g.plays.length) || (online && !(room && Net.isHost(room)))) return;
+    if (!Sus.canTalk(g) || g.phase !== 'play' || !g.last || (g.talk || []).some(x => x.at === g.plays.length) || (online && !(room && Net.isHost(room)))) return;
     const bots = Sus.aliveList(g).filter(c => c !== g.last.by && c !== a && (online ? !!(room.seats[g.seatKeys[c]] || {}).bot : c !== U.me)); if (!bots.length) return;
     U.talkT = setTimeout(() => { const v = U.view; if (!v || U.busy || U.queue.length || v.seq !== g.seq) return; const c = bots[Math.floor(Math.random() * bots.length)], act = Sus.botTalk(v, c); if (act) Net.act(act, c); }, 450 + Math.random() * 500);
   }
