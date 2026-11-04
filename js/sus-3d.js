@@ -418,14 +418,19 @@ const S3D = (function () {
       const hd = P.head.getWorldPosition(V(0, 0, 0)), hr = headR[P.char] * SP[P.char].head, base = V(hd.x, hd.y + hr + .08, hd.z);
       const dep = Math.max(.5, base.clone().sub(cam.position).dot(fw)), hh = th * dep, hw = hh * asp;
       const want = Math.min(.8, .34 * Math.max(1, 1.5 / asp)), sc0 = Math.max(.35, Math.min(3, want * hw / b.ww));        // small: about a sixth of the screen width (wider on a portrait phone)
+      // the board belongs to the speaker's head: it is visible only while the head is in front of the camera and on screen, otherwise it fades out and hides (it must never drift to the screen edge)
+      const front = base.clone().sub(cam.position).dot(fw) > .3, ha = front ? hd.clone().project(cam) : null, seen = !!ha && Math.abs(ha.x) < 1.03 && ha.y > -1.03 && ha.y < 1.03;
+      b.vis = (b.vis || 0) + ((seen ? 1 : 0) - (b.vis || 0)) * Math.min(1, dt * 9);
+      if (!front) { b.cur = base.clone(); b.grp.position.copy(base); b.mat.opacity = 0; b.grp.visible = false; continue; }
       const a = base.clone().project(cam), room = .86 - a.y; let sc = sc0, bh = sc * b.wh / hh;
       if (bh > room) { sc = Math.max(.85 * sc0, sc0 * room / bh); bh = sc * b.wh / hh; }                           // little space above the head: shrink a bit, but stay right on top of the head
-      const bw = sc * b.ww / hw / 2; let nx = Math.max(-.97 + bw, Math.min(.97 - bw, a.x)), ny = Math.min(a.y, .86 - bh);       // and if it still does not fit, slide down over the hair, never beside or in front of the face
+      const bw = sc * b.ww / hw / 2; let nx = Math.max(-.97 + bw, Math.min(.97 - bw, a.x)), ny = Math.min(a.y, .86 - bh);
+      nx = a.x + Math.max(-bw * .8, Math.min(bw * .8, nx - a.x)); ny = Math.max(a.y - bh * .9, ny);                // a head near the edge may nudge it a little, never more: it stays on top of that head
       const tgt = base.clone().addScaledVector(rt, (nx - a.x) * hw).addScaledVector(upv, (ny - a.y) * hh);
-      if (!b.cur) b.cur = tgt.clone(); else b.cur.lerp(tgt, 1 - Math.exp(-dt * 12)); b.grp.position.copy(b.cur);
+      if (!b.cur || b.vis < .05) b.cur = tgt.clone(); else b.cur.lerp(tgt, 1 - Math.exp(-dt * 12)); b.grp.position.copy(b.cur);
       const toCam = Math.atan2(cam.position.x - b.cur.x, cam.position.z - b.cur.z), toMid = Math.atan2(-base.x, -base.z);
       b.grp.rotation.y = lerpA(toCam, toMid, .3); b.grp.rotation.x = -Math.min(.3, Math.max(0, (cam.position.y - b.cur.y) * .12));
-      const pop = Math.min(1, age / 200), out = Math.min(1, (b.ms - age) / 350); b.mat.opacity = Math.min(pop, out); b.grp.scale.setScalar(sc * (.75 + .25 * pop));
+      const pop = Math.min(1, age / 200), out = Math.min(1, (b.ms - age) / 350); b.mat.opacity = Math.min(pop, out) * b.vis; b.grp.visible = b.mat.opacity > .01; b.grp.scale.setScalar(sc * (.75 + .25 * pop));
     }
   }
   // ---------------------------------------------------------------- camera ----
@@ -487,6 +492,6 @@ const S3D = (function () {
   }
   function start() { if (!ok || running) return; running = true; resize(); lastT = performance.now(); raf = requestAnimationFrame(frame); }
   function stop() { running = false; cancelAnimationFrame(raf); clearInterval(hidT); }
-  return { passGun, dbg: () => guns.map(g => [g.position.x, g.position.y, g.position.z, !!g.userData.held]), err: () => lastErr, init, setup, sync, start, stop, setView, setSelected, setExpr, say, deal, playCards, shout, reveal, pullStart, pullEnd, unfocus, slam, point, onPick: f => { cb.pick = f; }, onHover: f => { cb.hover = f; }, isOk: () => ok };
+  return { passGun, boardDbg: () => boards.map(b => ({ s: b.s, op: +b.mat.opacity.toFixed(3), vis: b.grp.visible, d: +b.grp.position.distanceTo(players[b.s].head.getWorldPosition(V(0, 0, 0))).toFixed(2) })), dbg: () => guns.map(g => [g.position.x, g.position.y, g.position.z, !!g.userData.held]), err: () => lastErr, init, setup, sync, start, stop, setView, setSelected, setExpr, say, deal, playCards, shout, reveal, pullStart, pullEnd, unfocus, slam, point, onPick: f => { cb.pick = f; }, onHover: f => { cb.hover = f; }, isOk: () => ok };
 })();
 window.S3D = S3D;
