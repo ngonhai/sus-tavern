@@ -8,22 +8,22 @@
 // 4. In Realtime Database > Rules, paste this (lets any client read/write only inside /rooms
 //    and /roomChats, which is fine for a small private game with friends):
 //
-//   {
-//     "rules": {
-//       "rooms": {
-//         "$roomId": {
-//           ".read": true,
-//           ".write": true
-//         }
-//       },
-//       "roomChats": {
-//         "$roomId": {
-//           ".read": true,
-//           ".write": true
-//         }
-//       }
-//     }
-//   }
+  // {
+  //   "rules": {
+  //     "rooms": {
+  //       "$roomId": {
+  //         ".read": true,
+  //         ".write": true
+  //       }
+  //     },
+  //     "roomChats": {
+  //       "$roomId": {
+  //         ".read": true,
+  //         ".write": true
+  //       }
+  //     }
+  //   }
+  // }
 //
 //   (roomChats is a separate path from rooms on purpose — see chatRef() in game.js.
 //   If you set up Rules before the chat feature existed, re-publish with this block
@@ -32,14 +32,13 @@
 //    these are not secret keys, access is controlled by the Database Rules above).
 
 const firebaseConfig = {
-  apiKey: "AIzaSyCNWhZlKjyVQR7O93GGO21k-ZedF99MYiM",
-  authDomain: "monopoly-407c8.firebaseapp.com",
-  databaseURL: "https://monopoly-407c8-default-rtdb.asia-southeast1.firebasedatabase.app",
-  projectId: "monopoly-407c8",
-  storageBucket: "monopoly-407c8.firebasestorage.app",
-  messagingSenderId: "168413879724",
-  appId: "1:168413879724:web:fa97126c00f85264caee09",
-  measurementId: "G-HM97CEJNCT"
+  apiKey: "AIzaSyBAEDxZzGgut5knt7qnNkLa1fesubt6hKE",
+  authDomain: "sus-tavern.firebaseapp.com",
+  databaseURL: "https://sus-tavern-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "sus-tavern",
+  storageBucket: "sus-tavern.firebasestorage.app",
+  messagingSenderId: "175436402424",
+  appId: "1:175436402424:web:3fb6315e8f25d60049b50d"
 };
 
 // Guarded so the game still works OFFLINE (vs bots / hot-seat) if Firebase can't load.
