@@ -48,3 +48,7 @@ It stays quiet when the play may hide the Devil (a call would make the bystander
 - 2D: a bubble over the avatar (flips below it when the avatar is near the top). 3D: a small flat board right above the head with the speaker's name (about a sixth of the screen wide); it follows the camera with a slight angle toward the table, and when the animal sits high on screen it shrinks a little and slides down over the head instead of leaving the view.
 - A comment never blocks anything: the state that carries it is shown outside the animation queue, so the play / Liar! buttons stay usable.
 - 3D boards are anchored to the speaker's head: they hide (fade out) when the head is behind the camera or off screen, and a head near the edge nudges its board only a little, so a board can never drift away from its speaker.
+
+## Log scroll (3D) and 2D revolver
+- 3D: the side panel lets clicks through to the scene, but the log box (`.log-wrap`) takes pointer events again so it scrolls with the wheel / touch (`overscroll-behavior: contain`). The log keeps its scroll position when the game state re-renders.
+- 2D: while the trigger is pulled (`case 'pull'` in sus-ui.js) a revolver (inline SVG, `gun2dAim`) slides in from the table centre along the line to the avatar and presses its muzzle against the head; it trembles with every beat, the hammer is cocked, then it either fires (muzzle flash, recoil, blood) or only clicks (spark). 3D keeps its own 3D revolver.

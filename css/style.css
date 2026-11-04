@@ -171,3 +171,13 @@ body.mode3d .seat2d{ width:215px; } body.mode3d .seat2d .cards i{ display:none; 
 .banner{ top:46%; }
 
 .sg-ch{ display:inline-flex; gap:3px; vertical-align:middle; margin-left:4px; } .sg-ch i{ width:9px; height:9px; border-radius:50%; background:#e0b04a; border:1px solid #7a5a14; } .sg-ch i.used{ background:#25788a; border-color:#16515f; } #sg-chip{ cursor:pointer; }
+
+/* 3D: the side panel itself lets clicks through to the scene, but the log box must be scrollable (wheel / touch) */
+body.mode3d .log-wrap{ pointer-events:auto; }
+#log-panel{ overscroll-behavior:contain; scrollbar-width:thin; scrollbar-color:rgba(255,255,255,.35) transparent; touch-action:pan-y; }
+#log-panel::-webkit-scrollbar{ width:6px; } #log-panel::-webkit-scrollbar-thumb{ background:rgba(255,255,255,.35); border-radius:3px; }
+
+/* 2D: the revolver pressed against the shooter's temple while the trigger is pulled (js: gun2dAim) */
+.gun2d{ position:fixed; left:0; top:0; width:230px; height:120px; transform-origin:0 0; z-index:75; pointer-events:none; }
+.gun2d .g2in{ width:230px; height:120px; transform-origin:226px 45px; } .gun2d svg{ display:block; overflow:visible; filter:drop-shadow(0 5px 3px rgba(0,0,0,.55)); }
+.gun2d .hammer{ transform-box:fill-box; transform-origin:85% 100%; } .gun2d .flash{ transform-box:view-box; transform-origin:226px 45px; opacity:0; } .gun2d .spark{ transform-box:fill-box; transform-origin:center; opacity:0; }

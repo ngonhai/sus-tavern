@@ -160,7 +160,7 @@
     $('seats').innerHTML = g.names.map((_, i) => seatHTML(g, i, pov)).join(''); renderCenter(g); renderHand(g);
     $('cam-bar').style.display = U.spec ? 'flex' : 'none'; if (U.spec) { $('cam-bar').innerHTML = '<button type="button" data-cam="side" class="' + (U.cam === 'side' ? 'on' : '') + '">' + t('camSide') + '</button>' + g.names.map((n, i) => '<button type="button" data-cam="' + i + '" class="' + (U.cam !== 'side' && U.camSeat === i ? 'on' : '') + '">' + esc(n) + '</button>').join(''); }
     $('game-room-code-label').textContent = Net.mode() === 'online' ? Net.code() + (U.spec ? ' · ' + t('spec') : (Net.specCount() ? ' · 👁' + Net.specCount() : '')) : ''; $('game-room-code-label').style.display = Net.mode() === 'online' ? '' : 'none';
-    $('round-chip').textContent = t('round', { n: g.round }) + ' · ' + t('cardShort')[g.target]; { const sg = $('sg-chip'); if (g.opts.shared) { const gn = g.gun[0]; let d = ''; for (let k = 0; k < Sus.CH; k++) d += '<i class="' + (k < gn.pos ? 'used' : '') + '"></i>'; sg.innerHTML = '🔫 ' + t('sharedChip') + ' <span class="sg-ch">' + d + '</span>'; sg.style.display = ''; sg.onmouseenter = e => { const r = sg.getBoundingClientRect(); showGun(0, r.left, r.bottom + 40); }; sg.onmouseleave = () => hideGun(); sg.onclick = () => { const r = sg.getBoundingClientRect(); showGun(0, r.left, r.bottom + 40, true); }; } else sg.style.display = 'none'; } $('log-panel').innerHTML = logHTML(g);
+    $('round-chip').textContent = t('round', { n: g.round }) + ' · ' + t('cardShort')[g.target]; { const sg = $('sg-chip'); if (g.opts.shared) { const gn = g.gun[0]; let d = ''; for (let k = 0; k < Sus.CH; k++) d += '<i class="' + (k < gn.pos ? 'used' : '') + '"></i>'; sg.innerHTML = '🔫 ' + t('sharedChip') + ' <span class="sg-ch">' + d + '</span>'; sg.style.display = ''; sg.onmouseenter = e => { const r = sg.getBoundingClientRect(); showGun(0, r.left, r.bottom + 40); }; sg.onmouseleave = () => hideGun(); sg.onclick = () => { const r = sg.getBoundingClientRect(); showGun(0, r.left, r.bottom + 40, true); }; } else sg.style.display = 'none'; } { const lp = $('log-panel'), st = lp.scrollTop; lp.innerHTML = logHTML(g); lp.scrollTop = st; }
     if (U.d3) { S3().setView(U.spec && U.cam === 'side' ? 'side' : U.me); S3().sync(g, { me: U.me }); }
     renderControls(g); tension(g);
   }
@@ -177,6 +177,50 @@
   function shake() { document.body.classList.remove('shake'); void document.body.offsetWidth; document.body.classList.add('shake'); setTimeout(() => document.body.classList.remove('shake'), 520); }
   function flashScreen(col) { const f = $('flash-screen'); f.style.background = col; if (reduce()) return; f.animate([{ opacity: .75 }, { opacity: 0 }], { duration: 450 }); }
   const seatEl = i => document.querySelector('.seat2d[data-i="' + i + '"] .av');
+
+  // ---- 2D: a revolver pressed against the shooter's temple while the trigger is pulled ----
+  // The gun comes in from the table centre along the line to the avatar and its muzzle touches the head; it trembles with every beat, the hammer is cocked, then it
+  // either fires (muzzle flash + recoil) or only clicks (tiny spark). 3D has its own revolver (S3D.pullStart), so this is only used in the 2D view.
+  const GUN_SVG = '<svg viewBox="0 0 230 120" width="230" height="120" aria-hidden="true"><g stroke="#2a1a14" stroke-width="5" stroke-linejoin="round" stroke-linecap="round">' +
+    '<path d="M40 62 L64 62 L60 110 Q52 117 36 113 Q22 109 24 95 Z" fill="#a0602f"/><circle cx="43" cy="86" r="3.2" fill="#e8c27a" stroke="none"/>' +
+    '<path d="M66 68 Q70 92 92 88 L98 68" fill="none"/>' +
+    '<rect x="100" y="36" width="126" height="18" rx="5" fill="#a9bcc4"/><rect x="108" y="54" width="82" height="9" rx="3" fill="#7f949c"/><path d="M212 36 L214 28 L222 28 L222 36 Z" fill="#7f949c"/>' +
+    '<rect x="40" y="30" width="76" height="38" rx="9" fill="#8aa0a8"/><rect x="60" y="25" width="42" height="46" rx="9" fill="#c4d3d8"/>' +
+    '<path d="M72 30 L72 66 M82 28 L82 68 M92 30 L92 66" stroke-width="3" fill="none" opacity=".55"/>' +
+    '<rect x="75" y="62" width="9" height="14" rx="2" fill="#5b6d74"/>' +
+    '<path class="hammer" d="M44 30 L33 15 L50 11 L58 30 Z" fill="#6c7f87"/></g>' +
+    '<circle class="spark" cx="50" cy="31" r="9" fill="#fff6c9"/>' +
+    '<g class="flash"><path d="M226 45 L252 28 L242 45 L260 52 L240 55 L248 72 L230 59 L224 76 L220 57 L204 64 L216 49 L202 40 L222 42 Z" fill="#ffd166" stroke="#ff7a2e" stroke-width="4" stroke-linejoin="round"/></g></svg>';
+  function gun2dClear() { document.querySelectorAll('.gun2d').forEach(el => el.remove()); }
+  function gun2dAim(i) {
+    gun2dClear(); const av = seatEl(i); if (!av || !av.animate) return null;
+    const r = av.getBoundingClientRect(), tb = ($('table2d') || document.body).getBoundingClientRect(), cx = r.left + r.width / 2, cy = r.top + r.height / 2, mx = tb.left + tb.width / 2, my = tb.top + tb.height / 2;
+    let dx = cx - mx, dy = cy - my; const L = Math.hypot(dx, dy) || 1; dx /= L; dy /= L;                    // from the table centre towards the avatar
+    const ang = Math.atan2(dy, dx), sx = Math.max(.4, Math.min(.62, innerWidth / 1900 + .22)), flip = Math.cos(ang) < 0 ? -1 : 1;
+    const tx = cx - dx * r.width * .3, ty = cy - dy * r.width * .3 - 3;                                      // muzzle on the side of the head that faces the gun
+    const el = document.createElement('div'); el.className = 'gun2d'; el.style.transform = 'translate(' + tx + 'px,' + ty + 'px) rotate(' + ang + 'rad) scale(' + sx + ',' + sx * flip + ') translate(-226px,-45px)';
+    el.innerHTML = '<div class="g2in">' + GUN_SVG + '</div>'; document.body.appendChild(el);
+    const inn = el.querySelector('.g2in'), svg = el.querySelector('svg'), ham = el.querySelector('.hammer'), fl = el.querySelector('.flash'), sp = el.querySelector('.spark');
+    inn.animate([{ transform: 'translateX(-90px)', opacity: 0 }, { transform: 'translateX(0)', opacity: 1 }], { duration: 260, easing: 'cubic-bezier(.2,.9,.3,1)', fill: 'forwards' });
+    return {
+      beat(k) {
+        if (k === 0) ham.animate([{ transform: 'rotate(0deg)' }, { transform: 'rotate(-38deg)' }], { duration: 140, fill: 'forwards' });
+        if (!reduce()) svg.animate([{ transform: 'translate(0,0)' }, { transform: 'translate(-1.6px,1.2px)' }, { transform: 'translate(1.4px,-1.6px)' }, { transform: 'translate(-1px,-1px)' }, { transform: 'translate(0,0)' }], { duration: 480 });
+      },
+      fire(dead) {
+        ham.animate([{ transform: 'rotate(-38deg)' }, { transform: 'rotate(0deg)' }], { duration: 70, fill: 'forwards' });
+        if (dead) {
+          fl.animate([{ opacity: 0, transform: 'scale(.3)' }, { opacity: 1, transform: 'scale(1.25)', offset: .35 }, { opacity: 0, transform: 'scale(1.5)' }], { duration: 260 });
+          inn.animate([{ transform: 'translateX(0) rotate(0deg)' }, { transform: 'translateX(-30px) rotate(-12deg)' }, { transform: 'translateX(-14px) rotate(-5deg)' }], { duration: 420, fill: 'forwards', easing: 'ease-out' });
+        } else {
+          sp.animate([{ opacity: 0, transform: 'scale(.3)' }, { opacity: 1, transform: 'scale(1.3)', offset: .4 }, { opacity: 0, transform: 'scale(1.6)' }], { duration: 220 });
+          inn.animate([{ transform: 'translateX(0)' }, { transform: 'translateX(-7px)' }, { transform: 'translateX(0)' }], { duration: 200, fill: 'forwards' });
+        }
+      },
+      leave() { inn.animate([{ opacity: 1 }, { opacity: 0, transform: 'translateX(-90px)' }], { duration: 300, fill: 'forwards' }); setTimeout(() => el.remove(), 330); }
+    };
+  }
+
   async function animate(g, before) { for (const e of g.ev) await playEv(e, g, before); say(''); }
   // 2D: the played cards are thrown from the player's seat onto the pile in the middle of the table
   async function flyCards(by, n) {
@@ -216,15 +260,15 @@
         break;
       }
       case 'pull': {
-        say(tr('pullT', { n: nm(e.p) }), 'warn'); setExpr(e.p, 'scared', 3000); Snd.play('aim'); const beats = e.dead ? 3 : 2 + (e.pos >= 3 ? 1 : 0);
-        if (U.d3) await S3().pullStart(e.p, beats); else for (let i = 0; i < beats; i++) { Snd.play('beat'); await sleep(520); }
+        say(tr('pullT', { n: nm(e.p) }), 'warn'); setExpr(e.p, 'scared', 3000); Snd.play('aim'); const beats = e.dead ? 3 : 2 + (e.pos >= 3 ? 1 : 0), G2 = U.d3 ? null : gun2dAim(e.p);
+        if (U.d3) await S3().pullStart(e.p, beats); else for (let i = 0; i < beats; i++) { Snd.play('beat'); if (G2) G2.beat(i); await sleep(520); }
         if (e.dead) {
-          Snd.play('live'); Snd.duck(1600); flashScreen('#ff4d6d'); shake(); say(tr('bang'), 'bad', tr('dead', { n: nm(e.p) })); setExpr(e.p, 'dead'); Fx.blood(seatEl(e.p)); setTimeout(() => Snd.play('hurt'), 140); floatAt(e.p, '☠', '#ff4d6d');
-          if (U.d3) await S3().pullEnd(e.p, true); else await sleep(1500);
+          Snd.play('live'); Snd.duck(1600); flashScreen('#ff4d6d'); shake(); say(tr('bang'), 'bad', tr('dead', { n: nm(e.p) })); setExpr(e.p, 'dead'); Fx.blood(seatEl(e.p)); if (G2) G2.fire(true); setTimeout(() => Snd.play('hurt'), 140); floatAt(e.p, '☠', '#ff4d6d');
+          if (U.d3) await S3().pullEnd(e.p, true); else await sleep(1500); if (G2) G2.leave();
           if (e.reload) say(t('reloaded'), 'warn');
         } else {
-          Snd.play('blank'); say(tr('click'), 'good', tr('safe', { n: nm(e.p), a: e.pos + 1 })); setExpr(e.p, 'laugh', 1400); Fx.smoke(seatEl(e.p));
-          if (U.d3) await S3().pullEnd(e.p, false); else await sleep(1000);
+          Snd.play('blank'); say(tr('click'), 'good', tr('safe', { n: nm(e.p), a: e.pos + 1 })); setExpr(e.p, 'laugh', 1400); Fx.smoke(seatEl(e.p)); if (G2) G2.fire(false);
+          if (U.d3) await S3().pullEnd(e.p, false); else await sleep(1000); if (G2) G2.leave();
         }
         if (U.d3 && e.next >= 0) S3().passGun(e.next);
         U.view.alive = g.alive.slice(); break;
