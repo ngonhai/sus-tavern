@@ -4,6 +4,7 @@
     "roomChats": { "$roomId": { ".read": true, ".write": true } },
     "secure": {
       "$roomId": {
+        ".write": "auth != null && root.child('rooms/' + $roomId).exists() && (root.child('rooms/' + $roomId + '/updatedAt').exists() ? root.child('rooms/' + $roomId + '/updatedAt').val() < now - 86400000 : root.child('rooms/' + $roomId + '/createdAt').val() < now - 86400000)",
         "host": {
           ".write": "auth != null && (!data.exists() || data.val() === auth.uid)"
         },

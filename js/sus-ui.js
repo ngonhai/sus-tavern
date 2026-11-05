@@ -392,7 +392,10 @@
     U.can3d = !!window.S3D && (U.d3 || S3D.init($('r3d-wrap'))); if (U.d3) { S3().onPick(onPick3); S3().onHover(h => { if (h && h.type === 'gun') showGun(h.p, h.x, h.y); else hideGun(); }); S3().start(); }
     wire(); Net.onChange(onRoom); applyLang();
     const q = new URLSearchParams(location.search).get('room'); const last = Net.lastRoom();
-    if (q) { showLobby(); $('tab-btn-join').click(); $('input-room-code').value = q.toUpperCase(); return; }
+    if (q) {                                           // a ?room= link: back to my table if I already sit / watch there (a refresh), otherwise the join form with the code filled in
+      if (Net.ONLINE_OK) { let c = null; try { c = await Promise.race([Net.tryRejoin(q, true), new Promise(res => setTimeout(() => res(null), 7000))]); } catch (e) { c = null; } if (c) return; }
+      showLobby(); $('tab-btn-join').click(); $('input-room-code').value = q.toUpperCase(); return;
+    }
     // refresh while seated at a table / in a running game: keep the loading screen up (never flash the lobby) and go straight back to that state
     if (Net.hasLocal() && Net.restoreLocal()) return;
     if (last && Net.ONLINE_OK) {

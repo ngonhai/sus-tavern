@@ -24,7 +24,7 @@ const Net = (function () {
   const freeChar = (r, want) => { const used = new Set(SEATK.filter(k => r.seats[k] && r.seats[k].char).map(k => r.seats[k].char)); if (want && Sus.CHARS.includes(want) && !used.has(want)) return want; const f = Sus.CHARS.filter(c => !used.has(c)); return f[Math.floor(Math.random() * f.length)] || Sus.CHARS[0]; };
   const keyOf = c => 'sus_' + c;
   const codeGen = () => { const c = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; let s = ''; for (let i = 0; i < 5; i++) s += c[Math.floor(Math.random() * c.length)]; return s; };
-  const LOCAL_KEY = 'sus_local_room', LAST_KEY = 'sus_last_room', TTL = 12 * 36e5;
+  const LOCAL_KEY = 'sus_local_room', LAST_KEY = 'sus_last_room', TTL = 12 * 36e5, ROOM_TTL = 24 * 36e5;   // ROOM_TTL: a room nobody has written to for 24 h is gone (its code works no more and can be handed out again)
 
   function normalize(r) { if (!r) return r; if (r.sign == null) r.sign = Math.floor(Math.random() * 1000); r.seats = r.seats || {}; r.specs = r.specs || {}; r.settings = Sus.normSettings(r.settings); return r; }
   const byKind = (a, b) => a.k < b.k ? -1 : a.k > b.k ? 1 : a.id - b.id;
@@ -63,6 +63,7 @@ const Net = (function () {
       const res = await S.ref.transaction(cur => {
         if (cur === null) return cur;
         const out = fn(normalize(JSON.parse(JSON.stringify(cur))));
+        if (out) out.updatedAt = Date.now();
         return out ? out : undefined;
       }, undefined, false);
       return !!(res && res.committed);
@@ -71,10 +72,16 @@ const Net = (function () {
   }
 
   function attach(code) {
-    S.mode = 'online'; S.code = code; S.ref = db.ref('rooms/' + keyOf(code)); rememberRoom(code);
+    S.mode = 'online'; S.code = code; S.ref = db.ref('rooms/' + keyOf(code)); rememberRoom(code); setUrl(code);
     S.ref.on('value', snap => { const prev = S.room, v = snap.val(); S.room = v ? normalize(v) : null; wireSecure(); emit(prev); });
     S.connRef = db.ref('.info/connected');
     S.connRef.on('value', snap => { if (snap.val() === true && S.room) armPresence(); });
+  }
+  // The address bar always carries the room link (<this page>?room=CODE) while you are in an online room: share it, bookmark it, refresh it.
+  function setUrl(code) { try { const u = new URL(location.href); if (code) u.searchParams.set('room', code); else u.searchParams.delete('room'); if (u.href !== location.href) history.replaceState(null, '', u.pathname + u.search + u.hash); } catch (e) {} }
+  const isStale = r => !!r && Date.now() - (r.updatedAt || r.createdAt || 0) > ROOM_TTL;
+  async function purge(code) {       // delete an expired room; the 'secure' part may only go if the published rules know about expiry, so fall back to the public part alone
+    const id = keyOf(code); try { await db.ref().update({ ['rooms/' + id]: null, ['secure/' + id]: null }); } catch (e) { try { await db.ref('rooms/' + id).remove(); } catch (e2) {} }
   }
   function mySeat(room) {
     room = room || S.room; if (!room) return null;
@@ -92,18 +99,21 @@ const Net = (function () {
     if (S.connRef) { S.connRef.off(); S.connRef = null; }
     if (S.mode === 'local') clearLocal();
     S.offs.forEach(r => r.off()); S.offs = []; S.waiters.forEach(w => { clearTimeout(w.t); w.res(false); }); S.waiters = []; S.priv = S.full = S.pubG = null; S.wPriv = S.wActs = S.loading = false; S.chain = null;
-    S.mode = null; S.code = null; S.room = null; S.g = null; S.gKey = null;
+    S.mode = null; S.code = null; S.room = null; S.g = null; S.gKey = null; setUrl(null);
   }
 
-  const baseRoom = host => ({ game: 'sus', hostUid: host, status: 'lobby', settings: Object.assign({}, Sus.DEFAULTS), seats: {}, gs: '', createdAt: Date.now(), sign: Math.floor(Math.random() * 1000) });   // sign = which tavern sign hangs on the wall for the whole life of the room
+  const baseRoom = host => ({ game: 'sus', hostUid: host, status: 'lobby', settings: Object.assign({}, Sus.DEFAULTS), seats: {}, gs: '', createdAt: Date.now(), updatedAt: Date.now(), sign: Math.floor(Math.random() * 1000) });   // sign = which tavern sign hangs on the wall for the whole life of the room
   const botName = () => t('bot');
+  // random name from the list that nobody at the table has (humans or bots, case-insensitive); only when the list is used up: 'Bot N'
+  const pickBotName = (used, n) => { const low = new Set(used.map(x => String(x).toLowerCase())), pool = (t('botNames') || []).filter(x => !low.has(x.toLowerCase())); return pool.length ? pool[Math.floor(Math.random() * pool.length)] : 'Bot ' + n; };
 
   const specName = () => { try { return localStorage.getItem('sus_name') || 'Guest'; } catch (e) { return 'Guest'; } };
   const isSpec = room => !!(room && !mySeatOf(room) && room.specs && room.specs[MY_UID]);
   const mySeatOf = room => SEATK.find(k => room.seats[k] && room.seats[k].uid === MY_UID) || null;
   async function createOnline(name, char) {
     if (!ONLINE_OK) throw new Error('offline'); await ready;
-    const code = codeGen(), room = baseRoom(MY_UID);
+    let code = codeGen(); for (let i = 0; ; i++) { const ex = await db.ref('rooms/' + keyOf(code)).get(); if (!ex.exists()) break; if (isStale(ex.val())) { await purge(code); break; } if (i > 8) throw new Error('busy'); code = codeGen(); }
+    const room = baseRoom(MY_UID);
     room.seats.s0 = { uid: MY_UID, name, connected: true, char: freeChar(room, char) };
     S.why = AUTH_OK ? '' : 'auth';
     if (AUTH_OK) {      // a sealed room only if sign-in works AND the published rules really keep other people's cards unreadable (with open rules sealing would protect nothing)
@@ -118,6 +128,7 @@ const Net = (function () {
     code = code.toUpperCase().trim();
     const snap = await db.ref('rooms/' + keyOf(code)).get();
     if (!snap.exists()) return { ok: false, reason: 'noRoom' };
+    if (isStale(snap.val())) { await purge(code); return { ok: false, reason: 'noRoom' }; }
     attach(code);
     await new Promise(res => { const t0 = Date.now(); (function w() { if (S.room || Date.now() - t0 > 4000) res(); else setTimeout(w, 30); })(); });
     if (!S.room) { detach(); return { ok: false, reason: 'noRoom' }; }
@@ -132,13 +143,14 @@ const Net = (function () {
     if (!ok) { detach(); return { ok: false, reason: 'noRoom' }; }
     return { ok: true, spectator: !mySeat() };
   }
-  async function tryRejoin(code) {
+  async function tryRejoin(code, seatedOnly) {      // seatedOnly (a shared ?room= link): only take the table back if I already sit / watch there
     if (!ONLINE_OK || !code) return null; await ready;
     code = code.toUpperCase();
     const snap = await db.ref('rooms/' + keyOf(code)).get();
     if (!snap.exists()) return null;
+    if (isStale(snap.val())) { await purge(code); return null; }
     const r = normalize(snap.val());
-    if (mySeatOf(r) || (r.specs && r.specs[MY_UID]) || r.status === 'play') { attach(code); return code; }
+    if (mySeatOf(r) || (r.specs && r.specs[MY_UID]) || (!seatedOnly && r.status === 'play')) { attach(code); return code; }
     return null;
   }
 
@@ -149,10 +161,10 @@ const Net = (function () {
   }
   const seatEntries = r => SEATK.filter(k => r.seats[k]).map(k => ({ key: k, name: r.seats[k].name, char: r.seats[k].char }));
   function startLocal(name, settings, char) {
-    S.mode = 'local'; S.code = 'LOCAL'; rememberRoom(null);
+    setUrl(null); S.mode = 'local'; S.code = 'LOCAL'; rememberRoom(null);
     const room = baseRoom('local'); room.settings = Sus.normSettings(settings);
     room.seats.s0 = { uid: 'local', name, local: true, connected: true, char: Sus.CHARS.includes(char) ? char : undefined }; if (!room.seats.s0.char) room.seats.s0.char = freeChar(room);
-    const bn = (t('botNames') || []); for (let i = 1; i <= room.settings.bots; i++) room.seats['s' + i] = { uid: 'bot' + i, name: bn[(i - 1) % bn.length] || ('Bot ' + i), bot: true, connected: true, char: freeChar(room) };
+    for (let i = 1; i <= room.settings.bots; i++) room.seats['s' + i] = { uid: 'bot' + i, name: pickBotName(SEATK.filter(x => room.seats[x]).map(x => room.seats[x].name), i), bot: true, connected: true, char: freeChar(room) };
     room.status = 'play'; room.gs = JSON.stringify(makeGame(seatEntries(room), room.settings, room.sign));
     S.room = normalize(room); emit(null); return 'LOCAL';
   }
@@ -165,7 +177,7 @@ const Net = (function () {
   });
   // one action by me; the engine decides if it is legal. `as` = table index to act for (local bots / host acting for a dropped player).
   // lobby: host adds/removes bots; everyone picks their own animal
-  const addBot = () => mutate(r => { if (r.status !== 'lobby' || r.hostUid !== MY_UID) return undefined; const k = SEATK.find(x => !r.seats[x]); if (!k) return undefined; const bn = t('botNames') || [], used = new Set(SEATK.filter(x => r.seats[x]).map(x => r.seats[x].name)); const nm = bn.find(x => !used.has(x)) || ('Bot ' + k[1]); r.seats[k] = { uid: 'bot_' + Math.random().toString(36).slice(2, 7), name: nm, bot: true, connected: true, char: freeChar(r) }; return r; });
+  const addBot = () => mutate(r => { if (r.status !== 'lobby' || r.hostUid !== MY_UID) return undefined; const k = SEATK.find(x => !r.seats[x]); if (!k) return undefined; const nm = pickBotName(SEATK.filter(x => r.seats[x]).map(x => r.seats[x].name), k[1]); r.seats[k] = { uid: 'bot_' + Math.random().toString(36).slice(2, 7), name: nm, bot: true, connected: true, char: freeChar(r) }; return r; });
   const removeBot = key => mutate(r => { if (r.status !== 'lobby' || r.hostUid !== MY_UID || !r.seats[key] || !r.seats[key].bot) return undefined; delete r.seats[key]; return r; });
   const setChar = c => mutate(r => { const k = S.mode === 'local' ? 's0' : SEATK.find(x => r.seats[x] && r.seats[x].uid === MY_UID); if (!k || r.status !== 'lobby') return undefined; if (SEATK.some(x => x !== k && r.seats[x] && r.seats[x].char === c)) return undefined; r.seats[k].char = c; return r; });
   const actOpen = (a, as) => mutate(r => {
@@ -188,7 +200,7 @@ const Net = (function () {
   const authG = () => sealed() && amHost() ? S.full : null;                       // the full state, host only: the host's bots decide on it
   const run = fn => { const p = (S.chain || Promise.resolve()).then(fn); S.chain = p.catch(() => {}); return p; };           // host work happens one step at a time
   function publish(g) {                // ONE atomic write: the public state, every other human's own cards, and the full copy for the host
-    const key = keyOf(S.code), u = {}; u['rooms/' + key + '/gs'] = JSON.stringify(Sus.pub(g)); u['secure/' + key + '/sec'] = JSON.stringify(g);
+    const key = keyOf(S.code), u = {}; u['rooms/' + key + '/gs'] = JSON.stringify(Sus.pub(g)); u['rooms/' + key + '/updatedAt'] = Date.now(); u['secure/' + key + '/sec'] = JSON.stringify(g);
     g.seatKeys.forEach((k, i) => { const x = S.room.seats[k]; if (x && !x.bot && x.uid && x.uid !== MY_UID) u['secure/' + key + '/priv/' + x.uid] = JSON.stringify({ id: g.id, seq: g.seq, hand: g.hands[i] }); });
     return db.ref().update(u);
   }

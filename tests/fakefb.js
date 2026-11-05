@@ -9,9 +9,9 @@ class Server {
   allowed(kind, path, uid) {
     const segs = split(path); let node = this.rules.rules; const vars = {}; let nodePath = '';
     const ev = (nd, np) => { const e = nd['.' + kind]; if (e === undefined) return false; if (typeof e === 'boolean') return e;
-      const data = this.get(np), names = ['auth', 'data', 'root', ...Object.keys(vars)];
+      const data = this.get(np), names = ['auth', 'data', 'root', 'now', ...Object.keys(vars)];
       const fn = new Function(...names, 'return (' + e + ');');
-      return !!fn(uid ? { uid } : null, { exists: () => data !== undefined, val: () => data === undefined ? null : data }, { child: p => ({ val: () => { const v = this.get(p); return v === undefined ? null : v; } }) }, ...Object.values(vars)); };
+      return !!fn(uid ? { uid } : null, { exists: () => data !== undefined, val: () => data === undefined ? null : data }, { child: p => ({ val: () => { const v = this.get(p); return v === undefined ? null : v; }, exists: () => this.get(p) !== undefined }) }, Date.now(), ...Object.values(vars)); };
     if (ev(node, '')) return true;
     for (const seg of segs) { let nxt = node[seg]; if (!nxt || typeof nxt !== 'object' || seg[0] === '.') { const wk = Object.keys(node).find(k => k[0] === '$'); if (!wk) return false; vars[wk] = seg; nxt = node[wk]; } node = nxt; nodePath += (nodePath ? '/' : '') + seg; if (ev(node, nodePath)) return true; }
     return false;
