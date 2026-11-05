@@ -35,14 +35,13 @@
 //    these are not secret keys, access is controlled by the Database Rules above).
 
 const firebaseConfig = {
-  apiKey: "AIzaSyCNWhZlKjyVQR7O93GGO21k-ZedF99MYiM",
-  authDomain: "monopoly-407c8.firebaseapp.com",
-  databaseURL: "https://monopoly-407c8-default-rtdb.asia-southeast1.firebasedatabase.app",
-  projectId: "monopoly-407c8",
-  storageBucket: "monopoly-407c8.firebasestorage.app",
-  messagingSenderId: "168413879724",
-  appId: "1:168413879724:web:fa97126c00f85264caee09",
-  measurementId: "G-HM97CEJNCT"
+  apiKey: "AIzaSyBAEDxZzGgut5knt7qnNkLa1fesubt6hKE",
+  authDomain: "sus-tavern.firebaseapp.com",
+  databaseURL: "https://sus-tavern-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "sus-tavern",
+  storageBucket: "sus-tavern.firebasestorage.app",
+  messagingSenderId: "175436402424",
+  appId: "1:175436402424:web:3fb6315e8f25d60049b50d"
 };
 
 // Guarded so the game still works OFFLINE (vs bots / hot-seat) if Firebase can't load.
