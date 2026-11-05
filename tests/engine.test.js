@@ -164,4 +164,19 @@ for (const devil of [false, true]) for (let sd = 0; sd < 30; sd++) { // whole ga
   ok(stats[0] > 100 && stats[1] > 100 && stats[2] > 100, 'easy, normal and hard bots all talk when the option is on');
   ok(bad.n === 0, 'every line a bot of any level produces is a legal action'); ok(stats[2] >= stats[1] && stats[1] >= stats[0], 'the weaker the bot, the less it talks'); }
 
+// secrecy of the public view (online rooms hand Sus.pub(g) to every client): nothing hidden may show through it
+{ const scramble = g => { const c = JSON.parse(JSON.stringify(g)), K = ['A', 'K', 'Q', 'J', 'D']; let x = 12345; const r = () => (x = (x * 1103515245 + 12345) >>> 0) / 4294967296;
+    const mix = card => { card.k = K[Math.floor(r() * K.length)]; }; c.hands.forEach(h => h.forEach(mix)); c.pile.forEach(mix); if (c.last) c.last.cards.forEach(mix); c.rs = Math.floor(r() * 1e9); c.gun.forEach(q => { q.bullet = Math.floor(r() * 6); }); return c; };
+  let checks = 0, changes = 0, cards = 0;
+  for (const shared of [false, true]) for (const devil of [false, true]) for (let n = 2; n <= 5; n++) for (let sd = 0; sd < 6; sd++) {
+    const g = Sus.newGame(Array.from({ length: n }, (_, i) => 'P' + i), { devil, joker: sd % 2 === 0, shared }, 300 + sd * 11 + n); let steps = 0;
+    const ids = g.hands.flat().map(c => c); ids.sort((a, b) => a.id - b.id); for (let i = 1; i < ids.length; i++) { cards++; if (ids[i].k !== ids[i - 1].k) changes++; }
+    while (g.phase !== 'over' && steps++ < 400) {
+      const view = Sus.pub(g); checks++;
+      ok(JSON.stringify(view) === JSON.stringify(Sus.pub(scramble(g))), 'public view must not depend on hidden kinds / bullets / seed');
+      ok(view.rs === 0 && view.gun.every(q => q.bullet === -1) && view.hands.every(h => h.every(c => Object.keys(c).join() === 'id' && true)) && view.pile.every(c => Object.keys(c).join() === 'id') && (!view.last || view.last.cards.every(c => Object.keys(c).join() === 'id')), 'public view carries only ids');
+      ok(view.hands.every(h => h.every((c, i) => !i || h[i - 1].id < c.id)), 'public hands are in id order (no kind order)');
+      const p = Sus.actor(g); if (!Sus.apply(g, p, Sus.bot(g, p))) { ok(false, 'bot illegal while checking secrecy'); break; }
+    } }
+  ok(checks > 500, 'secrecy was checked on many states (' + checks + ')'); ok(changes / cards > .45, 'ids do not run in blocks per kind (kind changes along the id order: ' + (changes / cards).toFixed(2) + ')'); }
 if (fails) { console.error(fails + ' failures'); process.exit(1); } else console.log('engine tests passed');

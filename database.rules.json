@@ -1,0 +1,29 @@
+{
+  "rules": {
+    "rooms":     { "$roomId": { ".read": true, ".write": true } },
+    "roomChats": { "$roomId": { ".read": true, ".write": true } },
+    "secure": {
+      "$roomId": {
+        "host": {
+          ".write": "auth != null && (!data.exists() || data.val() === auth.uid)"
+        },
+        "sec": {
+          ".read":  "auth != null && root.child('secure/' + $roomId + '/host').val() === auth.uid",
+          ".write": "auth != null && root.child('secure/' + $roomId + '/host').val() === auth.uid"
+        },
+        "priv": {
+          "$uid": {
+            ".read":  "auth != null && auth.uid === $uid",
+            ".write": "auth != null && root.child('secure/' + $roomId + '/host').val() === auth.uid"
+          }
+        },
+        "acts": {
+          ".read": "auth != null && root.child('secure/' + $roomId + '/host').val() === auth.uid",
+          "$uid": {
+            ".write": "auth != null && (auth.uid === $uid || root.child('secure/' + $roomId + '/host').val() === auth.uid)"
+          }
+        }
+      }
+    }
+  }
+}

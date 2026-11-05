@@ -81,7 +81,7 @@
     const n = Net.SEATK.filter(k => room.seats[k]).length; const ab = $('btn-add-bot'); ab.style.display = host ? '' : 'none'; ab.textContent = t('addBot'); ab.disabled = n >= 5; ab.onclick = () => { Snd.play('click'); Net.addBot(); };
     const mineSeat = Net.mySeat(), cur = mineSeat && room.seats[mineSeat] ? room.seats[mineSeat].char : null; $('wait-chars').innerHTML = (mineSeat ? '<label>' + t('pickChar') + '</label>' : '') + (mineSeat ? charRow(cur, new Set(Net.SEATK.filter(k => k !== mineSeat && room.seats[k]).map(k => room.seats[k].char))) : ''); wireChars($('wait-chars'), c => { U.myChar = c; try { localStorage.setItem('sus_char', c); } catch (e) {} Net.setChar(c); });
     $('btn-start-game').style.display = host ? '' : 'none'; $('btn-start-game').textContent = t('start'); $('btn-start-game').disabled = n < 2;
-    $('waiting-hint').textContent = host ? (n < 2 ? t('needTwo') : '') : t('waitHost'); $('rules-readonly-hint').style.display = host ? 'none' : '';
+    $('waiting-hint').textContent = (host ? (n < 2 ? t('needTwo') : '') : t('waitHost')) + (Net.mode() === 'online' ? (room.secure ? ' ' + t('sealedOn') : ' ' + t('sealedOff')) : ''); $('rules-readonly-hint').style.display = host ? 'none' : '';
   }
   function onRoom(room, prev) {
     U.room = room;
@@ -254,7 +254,7 @@
       }
       case 'play': {
         U.claim = t('claims', { n: nm(e.by), k: e.n, c: t('cardName')[g.target] }).replace(/<[^>]+>/g, ''); Snd.play('card'); bubble(e.by, t('claims', { n: '', k: e.n, c: t('cardShort')[g.target] }).trim(), 1600); setExpr(e.by, 'smug', 900);
-        if (U.d3) await S3().playCards(e.by, e.ids, e.n); else await flyCards(e.by, e.n); const c = $('center'); if (c) { const cl = c.querySelector('.claim-big'); if (cl) cl.textContent = U.claim; } await sleep(260); break;
+        if (U.d3) await S3().playCards(e.by, e.ids, e.n, !U.spec && e.by === U.me); else await flyCards(e.by, e.n); const c = $('center'); if (c) { const cl = c.querySelector('.claim-big'); if (cl) cl.textContent = U.claim; } await sleep(260); break;
       }
       case 'talk': showTalk(e, g); break;       // never waits: the buttons stay usable while a bot talks
       case 'call': {
@@ -331,9 +331,9 @@
     clearTimeout(U.talkT); const room = Net.room(), online = Net.mode() === 'online';
     if (!Sus.canTalk(g) || g.phase !== 'play' || !g.last || (g.talk || []).some(x => x.at === g.plays.length) || (online && !(room && Net.isHost(room)))) return;
     const bots = Sus.aliveList(g).filter(c => c !== g.last.by && c !== a && (online ? !!(room.seats[g.seatKeys[c]] || {}).bot : c !== U.me)); if (!bots.length) return;
-    U.talkT = setTimeout(() => { const v = U.view; if (!v || U.busy || U.queue.length || v.seq !== g.seq) return; const c = bots[Math.floor(Math.random() * bots.length)], act = Sus.botTalk(v, c); if (act) Net.act(act, c); }, 450 + Math.random() * 500);
+    U.talkT = setTimeout(() => { const v = U.view; if (!v || U.busy || U.queue.length || v.seq !== g.seq) return; const c = bots[Math.floor(Math.random() * bots.length)], act = Sus.botTalk(Net.authG() || v, c); if (act) Net.act(act, c); }, 450 + Math.random() * 500);
   }
-  function botMove(a) { if (U.busy || U.queue.length || !U.view) return; const g = U.view; if (Sus.actor(g) !== a) return; Net.act(Sus.bot(g, a), a); }
+  function botMove(a) { if (U.busy || U.queue.length || !U.view) return; const g = Net.authG() || U.view; if (Sus.actor(g) !== a || g.seq !== U.view.seq) return; Net.act(Sus.bot(g, a), a); }       // sealed room: the host's bots play from the full state, not from the host's own view
   function showOver(g) {
     if (U.shownOver === g.id) return; U.shownOver = g.id; const win = g.winner === U.me && !U.spec; const host = Net.isHost(Net.room());
     setTimeout(() => modal('<h2 class="center">' + (U.spec ? tr('winner', { n: esc(g.names[g.winner]) }) : win ? t('youWin') : t('youLose')) + '</h2><div class="center" style="width:90px;margin:0 auto">' + Art.avatar(g.chars[g.winner], 'laugh') + '</div><p class="center">' + tr('winner', { n: esc(g.names[g.winner]) }) + '</p>' +

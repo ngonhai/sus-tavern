@@ -2,7 +2,7 @@
 // Style: toon-shaded low-poly animals with a painted look (brush-streak texture + ink outline hull), custom scratchy card glyphs from sus-art.js.
 // The UI (sus-ui.js) owns rules/timing; this file only draws and animates:
 //   setup({g,me,view}) / sync(g)      static scene for a game state (seats, hands, pile, table card, dead players)
-//   deal(g) playCards(by,ids,n) shout(by,acc) reveal(acc,cards) pullStart(p,beats) pullEnd(p,dead)   the animated moments
+//   deal(g) playCards(by,ids,n,own) shout(by,acc) reveal(acc,cards) pullStart(p,beats) pullEnd(p,dead)   the animated moments
 //   setView(seat|'side'), setSelected(ids), onPick(fn), setExpr(seat,expr), say(seat,text,name,color,ms)   (bot table talk: a flat board above the speaker's head)
 import * as THREE from 'three';
 
@@ -252,7 +252,8 @@ const S3D = (function () {
   const texCache = {}; const cardTex = k => texCache[k] || (texCache[k] = (() => { const t = new THREE.CanvasTexture(k === 'back' ? Art.backCanvas() : Art.cardCanvas(k)); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t; })());
   const edgeM = new THREE.MeshToonMaterial({ color: '#eadfc4', gradientMap: gradMap() });
   const faceMats = {}; const cardMat = k => faceMats[k] || (faceMats[k] = [edgeM, edgeM, new THREE.MeshBasicMaterial({ map: cardTex(k) }), new THREE.MeshBasicMaterial({ map: cardTex('back') }), edgeM, edgeM]);
-  function makeCard(c) { const m = new THREE.Mesh(new THREE.BoxGeometry(CW, CT, CH), cardMat(c.k)); m.castShadow = true; m.userData.cardId = c.id; scene.add(m); return { id: c.id, k: c.k, real: c.k, mesh: m, owner: -1, inPile: false, faceUp: false, busy: false }; }
+  // other players' cards arrive without a kind (sealed rooms): back on both sides until they are revealed
+  function makeCard(c) { const m = new THREE.Mesh(new THREE.BoxGeometry(CW, CT, CH), cardMat(c.k || 'back')); m.castShadow = true; m.userData.cardId = c.id; scene.add(m); return { id: c.id, k: c.k, real: c.k, mesh: m, owner: -1, inPile: false, faceUp: false, busy: false }; }
   const pilePose = (idx, faceUp) => ({ pos: V((((idx * 37) % 11) - 5) * .005, TY + .004 + idx * .0045, (((idx * 53) % 11) - 5) * .005), q: new THREE.Quaternion().setFromEuler(new THREE.Euler(faceUp ? 0 : Math.PI, ((idx * 71) % 360) * Math.PI / 180, 0)) });
   function handPose(i, j, cnt, mineHere) {
     const spread = mineHere ? .105 : .06, r = (j - (cnt - 1) / 2) * spread;
@@ -295,8 +296,20 @@ const S3D = (function () {
       m.position.copy(from); m.visible = false; jobs.push(wait(d).then(() => { m.visible = true; Snd.play('card'); return tween(380, u => { m.position.lerpVectors(from, to, u); m.position.y += Math.sin(u * Math.PI) * .12; m.quaternion.slerpQuaternions(poseQ(0, Math.PI, 0), qt, u); }, eo); })); });
     await Promise.all(jobs); placeHands(g);
   }
-  async function playCards(by, ids, count) {
-    if (!ok || !players[by]) return; const P = players[by], arm = P.arms[0], recs = ids.map(id => cards.get(id)).filter(Boolean); const base = game ? game.pile.length : 0, HB = SEAT[by].dir.clone().multiplyScalar(-.09);
+  // Privacy: everybody else sees the player's hand lying face down, so the animation must not show WHICH slots were chosen. For every viewer except the player himself the cards are
+  // taken from the right end of the hand (one card = the outermost right card, more cards = the rightmost ones, first card outermost). The chosen cards are quietly swapped into
+  // those slots first (all backs look the same), so the card meshes that travel to the pile are still the real ones and the later reveal still flips the right cards.
+  function hideSlots(by, ids) {
+    const hand = game && game.hands[by] ? game.hands[by].map(c => c.id) : null; if (!hand || !ids.every(id => hand.includes(id) && cards.get(id))) return;
+    ids.forEach((id, k) => {
+      const ti = hand.length - 1 - k, hi = hand.indexOf(id); if (ti < 0 || hi === ti) return; const A = cards.get(id), B = cards.get(hand[ti]); if (!A || !B) return;
+      const pa = A.mesh.position.clone(), qa = A.mesh.quaternion.clone(); A.mesh.position.copy(B.mesh.position); A.mesh.quaternion.copy(B.mesh.quaternion); B.mesh.position.copy(pa); B.mesh.quaternion.copy(qa);
+      const h = A.home; A.home = B.home; B.home = h; hand[hi] = hand[ti]; hand[ti] = id;
+    });
+  }
+  async function playCards(by, ids, count, own) {
+    if (!ok || !players[by]) return; if (!own) hideSlots(by, ids);          // own = the viewer is the player who plays (he sees his own hand anyway)
+    const P = players[by], arm = P.arms[0], recs = ids.map(id => cards.get(id)).filter(Boolean); const base = game ? game.pile.length : 0, HB = SEAT[by].dir.clone().multiplyScalar(-.09);
     recs.forEach(r => { r.busy = true; });
     // reach to the hand, grab, push the cards onto the table centre
     const c0 = recs.length ? recs[0].mesh.position.clone() : sw(by, 0, TY + .1, .42);
@@ -313,7 +326,8 @@ const S3D = (function () {
     const dest = from.clone().addScaledVector(d, .8).add(V(0, .05, 0)); arm.point = true; await Promise.all([gripTo(arm, 1, 160), moveHand(arm, dest, 360, eo)]); await wait(520); await Promise.all([gripTo(arm, 0, 200), moveHand(arm, arm.rest, 360)]); arm.point = false;
   }
   async function reveal(acc, cs) {
-    if (!ok) return; const campos0 = cam.position.clone(), recs = cs.map(c => cards.get(c.id)).filter(Boolean), campos = cam.position.clone(), H = V(0, TY + .12, 0).addScaledVector(V(campos0.x, 0, campos0.z).normalize(), .32); recs.forEach(r => { r.busy = true; r.faceUp = true; });
+    if (!ok) return; cs.forEach(c => { const r = cards.get(c.id); if (r && c.k) { r.mesh.material = cardMat(c.k); r.real = r.k = c.k; } });      // the revealed kinds come with the event
+    const campos0 = cam.position.clone(), recs = cs.map(c => cards.get(c.id)).filter(Boolean), campos = cam.position.clone(), H = V(0, TY + .12, 0).addScaledVector(V(campos0.x, 0, campos0.z).normalize(), .32); recs.forEach(r => { r.busy = true; r.faceUp = true; });
     tween(350, e => { tcOff = .12 * e; }, eo); focusOn(V(0, TY + .2, 0), .5, 10, 0);   /* the table card stays visible, lifted above the cards being checked */ const tgt = recs.map((r, i) => { const o = new THREE.Object3D(); o.position.copy(H).add(V((i - (recs.length - 1) / 2) * .14, 0, 0)); o.lookAt(campos); o.rotateX(Math.PI / 2); return o; });
     const from = recs.map(r => r.mesh.position.clone()), qf = recs.map(r => r.mesh.quaternion.clone()); Snd.play('flip');
     await tween(700, u => recs.forEach((r, i) => { r.mesh.position.lerpVectors(from[i], tgt[i].position, u); r.mesh.position.y += Math.sin(u * Math.PI) * .1; r.mesh.quaternion.slerpQuaternions(qf[i], tgt[i].quaternion, u); }), eo);
@@ -492,6 +506,6 @@ const S3D = (function () {
   }
   function start() { if (!ok || running) return; running = true; resize(); lastT = performance.now(); raf = requestAnimationFrame(frame); }
   function stop() { running = false; cancelAnimationFrame(raf); clearInterval(hidT); }
-  return { passGun, boardDbg: () => boards.map(b => ({ s: b.s, op: +b.mat.opacity.toFixed(3), vis: b.grp.visible, d: +b.grp.position.distanceTo(players[b.s].head.getWorldPosition(V(0, 0, 0))).toFixed(2) })), dbg: () => guns.map(g => [g.position.x, g.position.y, g.position.z, !!g.userData.held]), err: () => lastErr, init, setup, sync, start, stop, setView, setSelected, setExpr, say, deal, playCards, shout, reveal, pullStart, pullEnd, unfocus, slam, point, onPick: f => { cb.pick = f; }, onHover: f => { cb.hover = f; }, isOk: () => ok };
+  return { passGun, cardPos: id => cards.get(id) ? cards.get(id).mesh.position.toArray() : null, boardDbg: () => boards.map(b => ({ s: b.s, op: +b.mat.opacity.toFixed(3), vis: b.grp.visible, d: +b.grp.position.distanceTo(players[b.s].head.getWorldPosition(V(0, 0, 0))).toFixed(2) })), dbg: () => guns.map(g => [g.position.x, g.position.y, g.position.z, !!g.userData.held]), err: () => lastErr, init, setup, sync, start, stop, setView, setSelected, setExpr, say, deal, playCards, shout, reveal, pullStart, pullEnd, unfocus, slam, point, onPick: f => { cb.pick = f; }, onHover: f => { cb.hover = f; }, isOk: () => ok };
 })();
 window.S3D = S3D;

@@ -31,9 +31,10 @@
   // cards per kind: with the 2 Jokers 6 (8 for 5 players); without them a little more so that everyone can still be dealt 5 cards
   const perKind = g => g.opts.joker ? (g.n >= 5 ? 8 : 6) : Math.max(6, Math.ceil(g.n * HAND / 3));
   function deckFor(g) {
-    const per = perKind(g), d = []; KINDS.forEach(k => { for (let i = 0; i < per; i++) d.push({ id: g.nid++, k }); });
-    if (g.opts.joker) d.push({ id: g.nid++, k: 'J' }, { id: g.nid++, k: 'J' }); if (g.opts.devil) d.push({ id: g.nid++, k: 'D' });
-    return shuffle(g, d);
+    const per = perKind(g), d = []; KINDS.forEach(k => { for (let i = 0; i < per; i++) d.push({ k }); });
+    if (g.opts.joker) d.push({ k: 'J' }, { k: 'J' }); if (g.opts.devil) d.push({ k: 'D' });
+    shuffle(g, d); d.forEach(c => { c.id = g.nid++; });       // ids after the shuffle: an id says nothing about the kind (online, ids of hidden cards are public)
+    return d;
   }
   function startRound(g) {
     g.round++; g.target = KINDS[ri(g, 3)]; g.pile = []; g.plays = []; g.talk = []; g.last = null; g.forced = false; g.phase = 'play'; g.shooters = []; g.sidx = 0; g.seen = [];
@@ -41,6 +42,14 @@
     g.hands.forEach(h => h.sort((a, b) => a.k < b.k ? -1 : a.k > b.k ? 1 : a.id - b.id));
     g.turn = g.alive[g.lead] ? g.lead : nextAlive(g, g.lead);
     g.ev.push({ t: 'round', n: g.round, target: g.target, lead: g.turn, devil: !!g.opts.devil });
+  }
+  // The public face of a game state, safe to give to every client of an online room: no card kinds (hands, pile and the last play are just ids, hands in id order so that the order
+  // does not reveal the kinds either), no revolver bullet and no random seed (the seed would let anybody replay the shuffle of the next rounds). A revealed play stays public in g.ev.
+  function pub(g) {
+    const p = JSON.parse(JSON.stringify(g)), hide = c => ({ id: c.id });
+    p.rs = 0; p.gun = p.gun.map(x => ({ pos: x.pos, bullet: -1 }));
+    p.hands = p.hands.map(h => h.map(hide).sort((a, b) => a.id - b.id)); p.pile = p.pile.map(hide); if (p.last) p.last.cards = p.last.cards.map(hide);
+    return p;
   }
   const gunOf = (g, p) => g.opts.shared ? g.gun[0] : g.gun[p];
   const honest = (g, cards) => cards.every(c => c.k === g.target || c.k === 'J');
@@ -326,6 +335,6 @@
     return { t: 'play', ids: ids.slice(0, 3) };
   }
 
-  root.Sus = { CHARS, KINDS, MAXP, CH, HAND, DEFAULTS, normSettings, gunOf, newGame, apply, bot, actor, canCall, mustCall, legalPlay, honest, aliveList, nextAlive, suspicion, suspicion2, canTalk, HB, botTalk };
+  root.Sus = { CHARS, KINDS, MAXP, CH, HAND, DEFAULTS, normSettings, gunOf, pub, newGame, apply, bot, actor, canCall, mustCall, legalPlay, honest, aliveList, nextAlive, suspicion, suspicion2, canTalk, HB, botTalk };
   if (typeof module !== 'undefined') module.exports = root.Sus;
 })(typeof window !== 'undefined' ? window : globalThis);

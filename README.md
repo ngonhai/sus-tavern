@@ -60,3 +60,29 @@ It stays quiet when the play may hide the Devil (a call would make the bystander
 
 ## Text selection
 Almost all text is not selectable (`user-select:none` on html/body). Still selectable: the game log (`#log-panel`), text fields / selects and the room code. The sub line of `.banner.warn` / `.banner.good` uses dark brown / dark green instead of the light grey, which was unreadable on the yellow "Round N" banner.
+
+## 3D: the animation must not leak which cards were chosen
+When a player plays cards, every viewer except that player sees the character take them from the RIGHT end of the hand (one card = the outermost right card, several = the rightmost ones). `playCards(by, ids, n, own)` in sus-3d.js first swaps the chosen cards into those slots (`hideSlots`; all backs look the same), so the meshes that fly to the pile are still the real cards and the reveal flips the right ones. `own` is true only for the player himself (not spectators), who keeps seeing the real positions.
+
+## Hidden hands (sealed online rooms)
+
+Without this, every browser in an online room receives the whole game state, so a technical player can read everybody's cards (and the revolver's bullet) in the developer tools. A **sealed room** gives each browser only what it may see:
+
+- **Public state** (`rooms/<room>/gs`, produced by `Sus.pub`): no card kinds, no revolver bullet, no random seed, hands in id order. Card ids are handed out *after* the shuffle, so an id says nothing about the kind.
+- **Your own cards**: `secure/<room>/priv/<your uid>`, readable by you only.
+- **The host's browser is the referee.** It holds the full state (`secure/<room>/sec`, readable by the host only), receives every other player's move through `secure/<room>/acts/<uid>`, applies it, and publishes the new public state + each player's cards in one atomic write. Bots are played by the host from the full state. A move made on an old state, or by someone whose turn it is not, is dropped.
+- The UI works on `Net.getG()`: the public state with *my* cards put into my seat (it waits until my cards for that exact state have arrived). In a local game, or an open room, `getG()` is just the complete state as before.
+
+### Turning it on (one time, in the Firebase console)
+1. **Build → Authentication → Sign-in method → Anonymous → Enable.**
+2. **Realtime Database → Rules**: add the `"secure": { ... }` block of `database.rules.json` next to your existing nodes (or use the file as it is if this database is only for Sus Tavern), then **Publish**.
+3. Create a new room: the waiting room says "🔒 Hands are hidden". If it says "⚠ not hidden", the room works but is open (the old behaviour): sign-in is off, or the rules are not published (a room is only sealed when the rules really refuse reads of other players' cards).
+
+### What it does not do
+- **The host can still see everything** (their own browser holds the full state). With no server of our own, someone has to be the referee; a server-side referee needs Cloud Functions, i.e. the paid Blaze plan. Play with a host you trust, as with a real card table.
+- **If the host leaves mid-game, the game cannot go on** (only the host can read the full state). In the lobby the table is handed to another player as before.
+- `rooms/<room>` itself stays open for reading and writing (as before), so integrity is not protected, only secrecy: someone could scribble over the public state; the host's next move republishes it.
+- Rooms created before the upgrade stay open. Clearing the browser's site data gives a new anonymous identity, so a refresh is fine but clearing data means you cannot take your seat back.
+- A move now travels player → Firebase → host → Firebase → everybody (a few hundred milliseconds).
+
+Tests: `node tests/engine.test.js` (includes the secrecy checks on `Sus.pub`) and `node tests/sealed.test.js` (several browsers + a fake Firebase enforcing `database.rules.json`).
