@@ -75,7 +75,7 @@ const S3D = (function () {
     const signMat = new THREE.MeshBasicMaterial({ map: LABEL(signsOf()[0][0], 2.6, .7, signsOf()[0][1]), transparent: true });
     const signMeshes = [];
     setSign = (n, lang) => { const SIGNS = signsOf(lang), d = SIGNS[((n | 0) % SIGNS.length + SIGNS.length) % SIGNS.length], k = 1 + .75 * (d[0].split('\n').length - 1); if (signMat.map) signMat.map.dispose(); signMat.map = LABEL(d[0], 2.6, .7 * k, d[1]); signMat.needsUpdate = true; signMeshes.forEach(m => m.scale.y = k); };
-    const sign = new THREE.Mesh(new THREE.PlaneGeometry(2.6, .7), signMat); sign.position.set(0, 3.1, -5.9); scene.add(sign);
+    const sign = new THREE.Mesh(new THREE.PlaneGeometry(3.2, .86), signMat); sign.position.set(0, 3.4, -5.9); scene.add(sign);
     const sign2 = sign.clone(); sign2.position.set(0, 3.1, 5.9); sign2.rotation.y = Math.PI; scene.add(sign2); signMeshes.push(sign, sign2);
     // lights
     scene.add(new THREE.HemisphereLight(0x5b8fa0, 0x2a1a10, .5)); scene.add(new THREE.AmbientLight(0x40606a, .35));
