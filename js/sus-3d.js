@@ -70,11 +70,11 @@ const S3D = (function () {
     const COL = ['#ffb547', '#5eead4', '#ff8a6a', '#6cc4f5', '#f6f0e2', '#b39bff', '#7bd88f'];
     for (let ring = 0; ring < 2; ring++) for (let k = 0; k < 44; k++) { const a = k / 44 * Math.PI * 2, rr = 5.9, h = .22 + Math.random() * .16, b = cyl(.04, .05, h, 6, M(COL[(k * 3 + ring) % COL.length]), Math.sin(a) * rr, 1.55 + ring * .85 + h / 2, Math.cos(a) * rr, scene, false); b.rotation.y = a; }
     for (let ring = 0; ring < 2; ring++) { const sh = new THREE.Mesh(new THREE.TorusGeometry(5.9, .04, 4, 40), M('#7e4526')); sh.rotation.x = Math.PI / 2; sh.position.y = 1.53 + ring * .85; scene.add(sh); }
-    // The tavern sign on the wall (use \n in a name for a second line): every game picks one of these (g.sign is random per room/game, so all players in a room see the same one). Add or edit names here.
-    const SIGNS = [['SUS TAVERN', '#ff8a6a'], ['CẨN TRỌNG BAR', '#ffd36a'], ['NO TRUST INN', '#8ee3d0'], ['LAST CALL', '#ff6a6a'], ['TRÊN ĐỜI CÓ 2 LOẠI\nNÓI DỐI VÀ NÓI DỐI NHIỀU LẦN', '#c9a7ff'], ['DEAD MAN\'S TAB', '#ff9f5a'], ['IT\'S NÓI DỐI TIME', '#ffb547'], ['QUÁN SUS-PICIOUS', '#ff8a6a'], ['LIARS!!!', '#7fd1ff']];
-    const signMat = new THREE.MeshBasicMaterial({ map: LABEL(SIGNS[0][0], 2.6, .7, SIGNS[0][1]), transparent: true });
+    // The tavern sign on the wall: every game picks one of the I18N[lang].signs (g.sign is random per room/game, g.lang is the language of whoever created the room, so all players in a room see the same sign). Edit the names in i18n.js.
+    const signsOf = lang => (I18N[lang] || I18N[LANG] || I18N.vi).signs || I18N.vi.signs;
+    const signMat = new THREE.MeshBasicMaterial({ map: LABEL(signsOf()[0][0], 2.6, .7, signsOf()[0][1]), transparent: true });
     const signMeshes = [];
-    setSign = n => { const d = SIGNS[((n | 0) % SIGNS.length + SIGNS.length) % SIGNS.length], k = 1 + .75 * (d[0].split('\n').length - 1); if (signMat.map) signMat.map.dispose(); signMat.map = LABEL(d[0], 2.6, .7 * k, d[1]); signMat.needsUpdate = true; signMeshes.forEach(m => m.scale.y = k); };
+    setSign = (n, lang) => { const SIGNS = signsOf(lang), d = SIGNS[((n | 0) % SIGNS.length + SIGNS.length) % SIGNS.length], k = 1 + .75 * (d[0].split('\n').length - 1); if (signMat.map) signMat.map.dispose(); signMat.map = LABEL(d[0], 2.6, .7 * k, d[1]); signMat.needsUpdate = true; signMeshes.forEach(m => m.scale.y = k); };
     const sign = new THREE.Mesh(new THREE.PlaneGeometry(2.6, .7), signMat); sign.position.set(0, 3.1, -5.9); scene.add(sign);
     const sign2 = sign.clone(); sign2.position.set(0, 3.1, 5.9); sign2.rotation.y = Math.PI; scene.add(sign2); signMeshes.push(sign, sign2);
     // lights
@@ -271,7 +271,7 @@ const S3D = (function () {
   // ---------------------------------------------------------------- sync + setup ----
   let setSign = () => {};
   function setup(o) {
-    if (!ok) return; game = o.g; me = o.me; layout(o.g.n); setSign(o.g.sign);
+    if (!ok) return; game = o.g; me = o.me; layout(o.g.n); setSign(o.g.sign, o.g.lang);
     players.forEach(p => { if (p) { scene.remove(p.root); p.arms.forEach(a => scene.remove(a.root)); } }); players.length = 0; guns.forEach(g => scene.remove(g)); guns.length = 0; cards.forEach(r => scene.remove(r.mesh)); cards.clear(); fxs.forEach(f => scene.remove(f.m)); fxs = []; tws.length = 0;
     const COLS = ['#ff6a4d', '#5eead4', '#ffb547', '#b39bff', '#6cc4f5'];
     shared = !!(o.g.opts && o.g.opts.shared);

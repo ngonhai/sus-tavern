@@ -116,7 +116,7 @@ const Net = (function () {
     S.mode = null; S.code = null; S.room = null; S.g = null; S.gKey = null; setUrl(null);
   }
 
-  const baseRoom = host => ({ game: 'sus', hostUid: host, status: 'lobby', settings: Object.assign({}, Sus.DEFAULTS), seats: {}, gs: '', createdAt: Date.now(), updatedAt: Date.now(), sign: Math.floor(Math.random() * 1000) });   // sign = which tavern sign hangs on the wall for the whole life of the room
+  const baseRoom = host => ({ game: 'sus', hostUid: host, status: 'lobby', settings: Object.assign({}, Sus.DEFAULTS), seats: {}, gs: '', createdAt: Date.now(), updatedAt: Date.now(), sign: Math.floor(Math.random() * 1000), lang: LANG });   // sign = which tavern sign hangs on the wall for the whole life of the room
   const botName = () => t('bot');
   // random name from the list that nobody at the table has (humans or bots, case-insensitive); only when the list is used up: 'Bot N'
   const pickBotName = (used, n) => { const low = new Set(used.map(x => String(x).toLowerCase())), pool = (t('botNames') || []).filter(x => !low.has(x.toLowerCase())); return pool.length ? pool[Math.floor(Math.random() * pool.length)] : 'Bot ' + n; };
@@ -170,9 +170,9 @@ const Net = (function () {
   }
 
   // table order is shuffled when a game starts; g.seatKeys[i] = room seat key of table position i (bots: 'b1'..)
-  function makeGame(entries, settings, sign) {
+  function makeGame(entries, settings, sign, lang) {
     const order = entries.slice(); for (let i = order.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [order[i], order[j]] = [order[j], order[i]]; }
-    const g = Sus.newGame(order.map(e => e.name), settings, null, order.map(e => e.char)); g.seatKeys = order.map(e => e.key); if (sign != null) g.sign = sign; return g;
+    const g = Sus.newGame(order.map(e => e.name), settings, null, order.map(e => e.char)); g.seatKeys = order.map(e => e.key); if (sign != null) g.sign = sign; if (lang) g.lang = lang; return g;
   }
   const seatEntries = r => SEATK.filter(k => r.seats[k]).map(k => ({ key: k, name: r.seats[k].name, char: r.seats[k].char }));
   function startLocal(name, settings, char) {
@@ -180,7 +180,7 @@ const Net = (function () {
     const room = baseRoom('local'); room.settings = Sus.normSettings(settings);
     room.seats.s0 = { uid: 'local', name, local: true, connected: true, char: Sus.CHARS.includes(char) ? char : undefined }; if (!room.seats.s0.char) room.seats.s0.char = freeChar(room);
     for (let i = 1; i <= room.settings.bots; i++) room.seats['s' + i] = { uid: 'bot' + i, name: pickBotName(SEATK.filter(x => room.seats[x]).map(x => room.seats[x].name), i), bot: true, connected: true, char: freeChar(room) };
-    room.status = 'play'; room.gs = JSON.stringify(makeGame(seatEntries(room), room.settings, room.sign));
+    room.status = 'play'; room.gs = JSON.stringify(makeGame(seatEntries(room), room.settings, room.sign, room.lang));
     S.room = normalize(room); emit(null); return 'LOCAL';
   }
   const isHost = room => S.mode === 'local' || (!!room && room.hostUid === MY_UID);
@@ -188,7 +188,7 @@ const Net = (function () {
   const setSetting = (k, v) => mutate(r => { if (r.status !== 'lobby') return undefined; r.settings[k] = v; r.settings = Sus.normSettings(r.settings); return r; });
   const startOpen = () => mutate(r => {
     if (r.status !== 'lobby' || r.hostUid !== MY_UID || seatEntries(r).length < 2) return undefined;
-    r.status = 'play'; r.gs = JSON.stringify(makeGame(seatEntries(r), r.settings, r.sign)); return r;
+    r.status = 'play'; r.gs = JSON.stringify(makeGame(seatEntries(r), r.settings, r.sign, r.lang)); return r;
   });
   // one action by me; the engine decides if it is legal. `as` = table index to act for (local bots / host acting for a dropped player).
   // lobby: host adds/removes bots; everyone picks their own animal
@@ -206,7 +206,7 @@ const Net = (function () {
   });
   const rematchOpen = () => mutate(r => {
     if (r.status !== 'play' || (S.mode === 'online' && r.hostUid !== MY_UID)) return undefined;
-    r.gs = JSON.stringify(makeGame(seatEntries(r).filter(e => S.mode === 'local' || r.seats[e.key].connected !== false), r.settings, r.sign)); return r;
+    r.gs = JSON.stringify(makeGame(seatEntries(r).filter(e => S.mode === 'local' || r.seats[e.key].connected !== false), r.settings, r.sign, r.lang)); return r;
   });
   // ---- sealed rooms: the host's browser is the referee ----
   const sref = () => db.ref('secure/' + keyOf(S.code));
@@ -245,13 +245,13 @@ const Net = (function () {
   }
   async function startSealed() {
     const r0 = S.room; if (!r0 || r0.status !== 'lobby' || r0.hostUid !== MY_UID || seatEntries(r0).length < 2) return false;
-    const F = makeGame(seatEntries(r0), r0.settings, r0.sign), sig = F.seatKeys.slice().sort().join();
+    const F = makeGame(seatEntries(r0), r0.settings, r0.sign, r0.lang), sig = F.seatKeys.slice().sort().join();
     const ok = await mutate(r => { if (r.status !== 'lobby' || r.hostUid !== MY_UID || seatEntries(r).map(e => e.key).sort().join() !== sig) return undefined; r.status = 'play'; r.gs = JSON.stringify(Sus.pub(F)); return r; });
     if (!ok) return false; S.full = F; await run(() => publish(F)); emit(S.room); return true;
   }
   async function rematchSealed() {
     const r = S.room; if (!r || r.status !== 'play' || !amHost()) return false;
-    S.full = makeGame(seatEntries(r).filter(e => r.seats[e.key].connected !== false), r.settings, r.sign); await run(() => publish(S.full)); emit(S.room); return true;
+    S.full = makeGame(seatEntries(r).filter(e => r.seats[e.key].connected !== false), r.settings, r.sign, r.lang); await run(() => publish(S.full)); emit(S.room); return true;
   }
   const startOnline = () => sealed() ? startSealed() : startOpen();
   const act = (a, as) => sealed() ? actSealed(a, as) : actOpen(a, as);
