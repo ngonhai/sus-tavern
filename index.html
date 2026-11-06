@@ -4,8 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Sus Tavern</title>
-<link rel="icon" type="image/svg+xml" href="icon.svg?v=33">
-<link rel="stylesheet" href="css/style.css?v=33">
+<link rel="icon" type="image/svg+xml" href="icon.svg?v=35">
+<link rel="stylesheet" href="css/style.css?v=35">
 </head>
 <body>
   <div id="r3d-wrap"></div>
@@ -73,7 +73,9 @@
         </div>
         <div class="emote-bar" id="emote-bar"></div>
       </div>
-      <div class="side-panel"><div class="log-wrap"><div id="log-panel"></div></div></div>
+      <div class="side-panel"><div class="log-wrap"><div id="log-panel"></div></div>
+        <div class="chat" id="chat"><div id="chat-log"></div><div id="chat-sug"></div>
+          <form id="chat-form" autocomplete="off"><input type="text" id="chat-input" maxlength="120" autocomplete="off" enterkeyhint="send"><button type="submit" class="chat-send" id="chat-send"></button></form></div></div>
     </div>
   </section>
 
@@ -83,14 +85,14 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
-  <script src="js/firebase-config.js?v=33"></script>
-  <script src="js/i18n.js?v=33"></script>
-  <script src="js/sus-sound.js?v=33"></script>
-  <script src="js/sus-art.js?v=33"></script>
-  <script src="js/sus-fx.js?v=33"></script>
-  <script src="js/sus-engine.js?v=33"></script>
-  <script src="js/sus-net.js?v=33"></script>
-  <script type="module" src="js/sus-3d.js?v=33" onerror="window.S3D_ERR='load'"></script>
-  <script src="js/sus-ui.js?v=33"></script>
+  <script src="js/firebase-config.js?v=35"></script>
+  <script src="js/i18n.js?v=35"></script>
+  <script src="js/sus-sound.js?v=35"></script>
+  <script src="js/sus-art.js?v=35"></script>
+  <script src="js/sus-fx.js?v=35"></script>
+  <script src="js/sus-engine.js?v=35"></script>
+  <script src="js/sus-net.js?v=35"></script>
+  <script type="module" src="js/sus-3d.js?v=35" onerror="window.S3D_ERR='load'"></script>
+  <script src="js/sus-ui.js?v=35"></script>
 </body>
 </html>

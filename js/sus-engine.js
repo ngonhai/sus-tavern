@@ -84,6 +84,7 @@
     if (a.t === 'talk') {                       // table talk: a bystander comments on the last play (what it holds + what it thinks). Never changes whose turn it is.
       const at = (g.plays || []).length, mine = (g.talk || []).filter(x => x.at === at), n = a.n | 0;
       if (g.phase !== 'play' || !g.last || p === g.last.by || p === g.turn || a.k !== 'doubt' || n < 0 || n > g.hands[p].length || mine.length >= 2 || mine.some(x => x.by === p)) { g.seq--; return false; }
+      const story = n > 0 ? talkStory(g, p) : null; if (story && (n < story.lo || n > story.hi)) { g.seq--; return false; }       // no contradicting yourself within a round
       (g.talk = g.talk || []).push({ by: p, about: g.last.by, k: a.k, n, at, h: g.hands[p].length, ci: g.plays.filter(x => x.by === p).length });
       g.ev.push({ t: 'talk', by: p, about: g.last.by, k: a.k, n, cnt: g.last.n, v: (a.v | 0) % 1000 }); return true;       // n = 0: a plain accusation (no hand claimed); v picks the line, so every client shows the same one
     }
@@ -229,6 +230,12 @@
     let lies = 0, tot = 0; for (const e of g.log) if (e.t === 'call' && e.acc === j) { tot++; if (!e.honest) lies++; }
     return Math.max(.05, Math.min(.6, (lies + .8) / (tot + 4)));
   }
+  // What a speaker has told about its own hand this round ("I hold n table cards"). A hand only ever loses cards, and every card it put on the pile since was claimed to be a table card,
+  // so a later count has to stay between (n - cards played since) and n. Otherwise the same bot would say "I hold 2" now and "I hold 3" a turn later. null = nothing claimed yet.
+  function talkStory(g, p) {
+    const x = (g.talk || []).filter(t => t.by === p && t.n > 0).pop(); if (!x) return null;
+    const hl = g.hands[p].length, since = x.h != null ? Math.max(0, x.h - hl) : 0; return { n: x.n, lo: Math.max(0, x.n - since), hi: Math.min(x.n, hl) };
+  }
   // ---- round ledger ----
   // Everything said and played this round, combined. A comment is a claim about the speaker's own hand ("n good cards among h") made after `ci` of its own plays. How far to believe it:
   //  * prior: lower for players caught lying a lot; zero if impossible; much lower if the same speaker contradicted its earlier comment
@@ -283,11 +290,14 @@
     const lv = Math.max(0, Math.min(2, g.opts.botLevel == null ? 1 : g.opts.botLevel)), T = TALKLV[lv];
     if (!canTalk(g) || g.phase !== 'play' || !g.last || !g.alive[p] || p === g.last.by || p === g.turn || rnd(g) > HB.talk * T.chance) return null;
     const at = (g.plays || []).length, ts = (g.talk || []).filter(x => x.at === at); if (ts.length >= 2 || ts.some(x => x.by === p)) return null;
-    const hl = g.hands[p].length, good = g.hands[p].filter(c => c.k === g.target || c.k === 'J').length, s = suspicion2(g, p), v = ri(g, 1000);
+    const hl = g.hands[p].length, good = g.hands[p].filter(c => c.k === g.target || c.k === 'J').length, s = suspicion2(g, p), v = ri(g, 1000), story = talkStory(g, p);
     if (s.pD >= .25) return null;                                              // the play may hide the Devil: a call would make the bystander shoot too
     const lie = T.noise ? Math.max(0, Math.min(1, s.lie + (rnd(g) - .5) * T.noise)) : s.lie;
-    if (lie >= .5) return { t: 'talk', k: 'doubt', n: good >= 2 ? good : 0, v };   // it believes the accusation: quote its real hand if that is strong, else just say so
-    if (lie >= .25 && rnd(g) < Math.min(1, HB.talkLie * T.lie)) return { t: 'talk', k: 'doubt', n: hl >= 2 && rnd(g) < .6 ? Math.min(hl, Math.max(2, good + 1 + ri(g, 2))) : 0, v };   // bluff
+    // Once a count has been said it is kept: the new count is the real one pulled into the range the story allows (a bluffer keeps lying consistently, an honest bot stays honest).
+    // A count under 2 would only advertise a weak hand, so then it is a plain accusation.
+    const pick = want => { const n = story ? Math.max(story.lo, Math.min(story.hi, want)) : want; return n >= 2 ? n : 0; };
+    if (lie >= .5) return { t: 'talk', k: 'doubt', n: pick(good), v };   // it believes the accusation: quote its real hand if that is strong, else just say so
+    if (lie >= .25 && rnd(g) < Math.min(1, HB.talkLie * T.lie)) return { t: 'talk', k: 'doubt', n: hl >= 2 && rnd(g) < .6 ? pick(Math.min(hl, Math.max(2, good + 1 + ri(g, 2)))) : 0, v };   // bluff
     return null;
   }
   function botHard(g, p) {
@@ -308,7 +318,7 @@
     const out = ids => ({ t: 'play', ids: ids.slice(0, 3) });
     // the Devil: if somebody calls it everyone else shoots and its owner is spared; if nobody does, it is a free card. Best used as the lie, and it can carry junk along.
     if (dv && (!good.length || g.pile.length >= 3 || h.length <= 2 || rnd(g) < .25)) { const ids = [dv.id]; bad.slice(0, rnd(g) < .5 ? 2 : 1).forEach(c => ids.push(c.id)); return out(ids); }
-    const lie = !good.length || (bad.length > good.length + 1 && rnd(g) < HB.bluff);
+    const lie = !good.length || (!talkStory(g, p) && bad.length > good.length + 1 && rnd(g) < HB.bluff);       // having said "I hold n", it does not bluff while it still has them
     if (lie) { const ids = []; bad.slice(0, bad.length >= 2 && rnd(g) < .2 ? 2 : 1).forEach(c => ids.push(c.id)); if (!ids.length) ids.push(h[0].id); return out(ids); }
     const want = bad.length === 0 && good.length >= 3 ? 2 : 1;               // honest cards one at a time keeps them lasting; a fat truthful play also baits wrong calls
     return out(good.slice(0, want).map(c => c.id));
@@ -335,6 +345,6 @@
     return { t: 'play', ids: ids.slice(0, 3) };
   }
 
-  root.Sus = { CHARS, KINDS, MAXP, CH, HAND, DEFAULTS, normSettings, gunOf, pub, newGame, apply, bot, actor, canCall, mustCall, legalPlay, honest, aliveList, nextAlive, suspicion, suspicion2, canTalk, HB, botTalk };
+  root.Sus = { CHARS, KINDS, MAXP, CH, HAND, DEFAULTS, normSettings, gunOf, pub, newGame, apply, bot, actor, canCall, mustCall, legalPlay, honest, aliveList, nextAlive, suspicion, suspicion2, canTalk, talkStory, HB, botTalk };
   if (typeof module !== 'undefined') module.exports = root.Sus;
 })(typeof window !== 'undefined' ? window : globalThis);

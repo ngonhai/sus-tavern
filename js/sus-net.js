@@ -7,6 +7,7 @@
 //   secure/<room>/sec        the full state, readable by the host only (the host's browser is the table's referee)
 //   secure/<room>/priv/<uid> that player's own cards, readable by that player only
 //   secure/<room>/acts/<uid> a player's move waiting for the host (play / call / pull), writable by that player only
+// TABLE CHAT (online only): roomChats/<room>/<time-ordered key> = { u: uid, k: seat key ('' = spectator), n: name, x: text, ts }; the path is open in database.rules.json, no sign-in needed.
 // Without sign-in or without the published rules rooms stay open (the old behaviour: the whole state, hands included, is in the room).
 const Net = (function () {
   let MY_UID = (function () {
@@ -76,12 +77,25 @@ const Net = (function () {
     S.ref.on('value', snap => { const prev = S.room, v = snap.val(); S.room = v ? normalize(v) : null; wireSecure(); emit(prev); });
     S.connRef = db.ref('.info/connected');
     S.connRef.on('value', snap => { if (snap.val() === true && S.room) armPresence(); });
+    wireChat(code);
+  }
+  // the last 60 messages arrive first (oldest first), then every new one; the UI dedupes by key
+  function wireChat(code) {
+    const base = db.ref('roomChats/' + keyOf(code)), q = base.limitToLast ? base.limitToLast(60) : base; S.chatRef = base; S.offs.push(q);
+    q.on('child_added', snap => { const m = snap.val(); if (m && typeof m.x === 'string' && S.onChat) S.onChat(m, snap.key); });
+  }
+  const CHAT_MAX = 120;
+  function chatSend(text) {
+    text = String(text || '').replace(/\s+/g, ' ').trim().slice(0, CHAT_MAX); const r = S.room, k = r && mySeat(), me = r && (k ? r.seats[k] : r.specs[MY_UID]);
+    if (!text || S.mode !== 'online' || !S.chatRef || !me) return Promise.resolve(false);
+    const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 5);          // keys sort by time, which is the order the messages are shown in
+    return S.chatRef.child(id).set({ u: MY_UID, k: k || '', n: me.name, x: text, ts: Date.now() }).then(() => true, () => false);
   }
   // The address bar always carries the room link (<this page>?room=CODE) while you are in an online room: share it, bookmark it, refresh it.
   function setUrl(code) { try { const u = new URL(location.href); if (code) u.searchParams.set('room', code); else u.searchParams.delete('room'); if (u.href !== location.href) history.replaceState(null, '', u.pathname + u.search + u.hash); } catch (e) {} }
   const isStale = r => !!r && Date.now() - (r.updatedAt || r.createdAt || 0) > ROOM_TTL;
   async function purge(code) {       // delete an expired room; the 'secure' part may only go if the published rules know about expiry, so fall back to the public part alone
-    const id = keyOf(code); try { await db.ref().update({ ['rooms/' + id]: null, ['secure/' + id]: null }); } catch (e) { try { await db.ref('rooms/' + id).remove(); } catch (e2) {} }
+    const id = keyOf(code); try { await db.ref().update({ ['rooms/' + id]: null, ['secure/' + id]: null, ['roomChats/' + id]: null }); } catch (e) { try { await db.ref('rooms/' + id).remove(); await db.ref('roomChats/' + id).remove(); } catch (e2) {} }
   }
   function mySeat(room) {
     room = room || S.room; if (!room) return null;
@@ -98,7 +112,7 @@ const Net = (function () {
     if (S.ref) { S.ref.off(); S.ref = null; }
     if (S.connRef) { S.connRef.off(); S.connRef = null; }
     if (S.mode === 'local') clearLocal();
-    S.offs.forEach(r => r.off()); S.offs = []; S.waiters.forEach(w => { clearTimeout(w.t); w.res(false); }); S.waiters = []; S.priv = S.full = S.pubG = null; S.wPriv = S.wActs = S.loading = false; S.chain = null;
+    S.offs.forEach(r => r.off()); S.offs = []; S.waiters.forEach(w => { clearTimeout(w.t); w.res(false); }); S.waiters = []; S.priv = S.full = S.pubG = null; S.wPriv = S.wActs = S.loading = false; S.chain = null; S.chatRef = null;
     S.mode = null; S.code = null; S.room = null; S.g = null; S.gKey = null; setUrl(null);
   }
 
@@ -120,6 +134,7 @@ const Net = (function () {
       try { await db.ref('secure/' + keyOf(code) + '/host').set(MY_UID); const open = await db.ref('secure/' + keyOf(code) + '/priv/probe').get().then(() => true, () => false); if (open) S.why = 'rules'; else room.secure = true; }
       catch (e) { S.why = 'rules'; }
     }
+    await db.ref('roomChats/' + keyOf(code)).remove().catch(() => {});      // a brand new room never inherits old messages
     await db.ref('rooms/' + keyOf(code)).set(room);
     attach(code); return code;
   }
@@ -256,7 +271,7 @@ const Net = (function () {
   }
 
   return {
-    get MY_UID() { return MY_UID; }, ONLINE_OK, S, ready, authG, protection, getG, mySeat, isSpec: () => isSpec(S.room), specCount: () => S.room ? Object.keys(S.room.specs || {}).length : 0, isHost, createOnline, joinOnline, tryRejoin, startLocal, addBot, removeBot, setChar, restoreLocal, hasLocal, lastRoom, setSetting, startOnline, emote, act, rematch, leave, SEATK, seatEntries,
+    get MY_UID() { return MY_UID; }, ONLINE_OK, S, ready, authG, protection, getG, mySeat, isSpec: () => isSpec(S.room), specCount: () => S.room ? Object.keys(S.room.specs || {}).length : 0, isHost, createOnline, joinOnline, tryRejoin, startLocal, addBot, removeBot, setChar, restoreLocal, hasLocal, lastRoom, setSetting, startOnline, emote, chatSend, onChat: f => { S.onChat = f; }, act, rematch, leave, SEATK, seatEntries,
     room: () => S.room, mode: () => S.mode, code: () => S.code, onChange: f => { S.onChange = f; }
   };
 })();

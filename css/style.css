@@ -149,7 +149,7 @@ body.shake #screen-game{ animation:shake .5s linear; } @keyframes shake{ 0%,100%
 body{ background:transparent; } .hint-small{ font-size:.75rem; color:var(--ink-soft); text-align:center; }
 .help-list{ margin:8px 0 12px 18px; padding:0; font-size:.9rem; } .help-list li{ margin:5px 0; }
 .card-img{ display:block; }
-@media (max-width:900px){ .game-body{ grid-template-columns:1fr; padding:6px 8px; } .side-panel{ display:none; } .seat2d{ width:104px; font-size:.8rem; } .table2d{ min-height:340px; } .hand2d .card{ width:58px; } }
+@media (max-width:900px){ .game-body{ grid-template-columns:1fr; padding:6px 8px; } .log-wrap{ display:none; } .seat2d{ width:104px; font-size:.8rem; } .table2d{ min-height:340px; } .hand2d .card{ width:58px; } }
 
 .seat2d .cards i,.pile i{ display:block; background:var(--back) center/cover; border-radius:2px; box-shadow:0 1px 0 rgba(0,0,0,.4); } .seat2d .cards i{ width:15px; height:22px; } .pile i{ position:absolute; width:36px; height:50px; }
 .btn-liar.must{ animation:pulse 1s ease-in-out infinite; } @keyframes pulse{ 50%{ transform:scale(1.06); } }
@@ -195,3 +195,19 @@ body.mode3d .log-wrap{ pointer-events:auto; }
 html,body{ -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; }
 input, textarea, select, #log-panel, #log-panel *, #room-code-display{ -webkit-user-select:text; user-select:text; }
 img{ -webkit-user-drag:none; }
+
+/* ---- table chat (online rooms only; sits under the log, or alone on narrow screens) ---- */
+.chat{ display:none; flex-direction:column; gap:5px; margin-top:8px; background:rgba(5,24,31,.86); padding:8px; }
+body.has-chat .chat{ display:flex; }
+#chat-log{ height:130px; overflow-y:auto; font-size:.8rem; display:flex; flex-direction:column; gap:3px; overscroll-behavior:contain; touch-action:pan-y; scrollbar-width:thin; scrollbar-color:rgba(255,255,255,.35) transparent; }
+#chat-log, #chat-log *{ -webkit-user-select:text; user-select:text; }
+.chat-line{ padding:3px 8px; border-left:3px solid var(--line); background:rgba(255,255,255,.04); overflow-wrap:anywhere; } .chat-line.mine{ border-color:var(--accent); } .chat-line small{ font-weight:400; opacity:.7; }
+#chat-sug{ display:none; flex-direction:column; gap:3px; } .chat.typing #chat-sug:not(:empty){ display:flex; }
+#chat-sug button{ text-align:left; background:rgba(94,234,212,.14); color:var(--ink); border:0; border-left:3px solid var(--mint); padding:4px 8px; font:inherit; font-size:.76rem; line-height:1.25; cursor:pointer; } #chat-sug button:hover{ background:rgba(94,234,212,.28); }
+#chat-form{ display:flex; gap:4px; } #chat-input{ flex:1; min-width:0; width:auto; padding:7px 9px; font-size:.8rem; }
+.chat-send{ background:var(--accent); color:#2a0d07; border:0; padding:0 12px; font-weight:700; cursor:pointer; }
+@media (max-width:900px){ .side-panel{ margin-top:2px; } #chat-log{ height:96px; } }
+/* 3D: the panel floats on the right; lift it above the action buttons and keep it compact; the chat takes clicks again */
+body.mode3d .chat{ pointer-events:auto; background:rgba(5,24,31,.6); } body.mode3d #chat-log{ height:84px; }
+body.mode3d.has-chat .side-panel{ bottom:160px; } body.mode3d.has-chat .log-wrap{ max-height:100px; }
+@media (max-width:900px){ body.mode3d .side-panel{ width:min(300px,56vw); } }

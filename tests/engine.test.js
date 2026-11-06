@@ -179,4 +179,18 @@ for (const devil of [false, true]) for (let sd = 0; sd < 30; sd++) { // whole ga
       const p = Sus.actor(g); if (!Sus.apply(g, p, Sus.bot(g, p))) { ok(false, 'bot illegal while checking secrecy'); break; }
     } }
   ok(checks > 500, 'secrecy was checked on many states (' + checks + ')'); ok(changes / cards > .45, 'ids do not run in blocks per kind (kind changes along the id order: ' + (changes / cards).toFixed(2) + ')'); }
+// consistency of what a bot says about its own hand within a round: a hand only loses cards, so "I hold 2" can never be followed by "I hold 3"
+{ const g = Sus.newGame(['a', 'b', 'c', 'd'], { botLevel: 2 }, 61); g.turn = 0; g.target = 'K'; const play = p => Sus.apply(g, p, { t: 'play', ids: [g.hands[p][0].id] });
+  ok(play(0) && g.turn === 1, 'seat 0 plays'); ok(Sus.apply(g, 3, { t: 'talk', k: 'doubt', n: 3 }), 'seat 3 says it holds 3'); ok(Sus.talkStory(g, 3).lo === 3 && Sus.talkStory(g, 3).hi === 3, 'its story: exactly 3 so far');
+  ok(play(1) && g.turn === 2, 'seat 1 plays'); const seq = g.seq; ok(!Sus.apply(g, 3, { t: 'talk', k: 'doubt', n: 4 }) && g.seq === seq, 'a turn later it cannot claim more cards (3 -> 4): refused'); ok(!Sus.apply(g, 3, { t: 'talk', k: 'doubt', n: 2 }), 'nor fewer while it has played nothing (3 -> 2): refused'); ok(Sus.apply(g, 3, { t: 'talk', k: 'doubt', n: 3 }), 'repeating 3 is fine');
+  ok(play(2) && play(3) && play(0) && g.turn === 1, 'the table moves on, seat 3 played one card'); const st = Sus.talkStory(g, 3); ok(st.lo === 2 && st.hi === 3, 'after playing one card its story allows 2 or 3');
+  ok(!Sus.apply(g, 3, { t: 'talk', k: 'doubt', n: 1 }) && !Sus.apply(g, 3, { t: 'talk', k: 'doubt', n: 4 }), 'but not 1 and not 4'); ok(Sus.apply(g, 3, { t: 'talk', k: 'doubt', n: 0 }), 'a plain accusation (no count) never contradicts anything'); }
+{ let said = 0, refused = 0, backwards = 0; const hb = Object.assign({}, Sus.HB); Sus.HB.talk = 1; Sus.HB.talkLie = 1;
+  for (const lv of [0, 1, 2]) for (let sd = 0; sd < 25; sd++) {
+    const g = Sus.newGame(['a', 'b', 'c', 'd'], { botLevel: lv, devil: sd % 2 === 0, talk: true }, 800 + sd * 7 + lv), last = {}; let steps = 0, round = g.round;
+    while (g.phase !== 'over' && steps++ < 600) {
+      if (g.round !== round) { round = g.round; for (const k in last) delete last[k]; }
+      if (g.phase === 'play' && g.last) for (const c of Sus.aliveList(g).filter(j => j !== g.last.by && j !== g.turn)) { const ta = Sus.botTalk(g, c); if (!ta) continue; if (!Sus.apply(g, c, ta)) { refused++; continue; } said++; if (ta.n > 0) { if (last[c] != null && ta.n > last[c]) backwards++; last[c] = ta.n; } }
+      const p = Sus.actor(g); if (!Sus.apply(g, p, Sus.bot(g, p))) { ok(false, 'bot illegal while talking'); break; } } }
+  Object.assign(Sus.HB, hb); ok(said > 300, 'bots said plenty of things (' + said + ')'); ok(refused === 0, 'a bot\'s own proposal is never refused by the table (refused ' + refused + ')'); ok(backwards === 0, 'a bot never claims more cards than it claimed earlier in the round (' + backwards + ')'); }
 if (fails) { console.error(fails + ' failures'); process.exit(1); } else console.log('engine tests passed');

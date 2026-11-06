@@ -28,6 +28,7 @@
     $('btn-music').textContent = '🎵'; $('btn-sound').textContent = Snd.isMuted() ? '🔇' : '🔊'; $('btn-3d').textContent = U.d3 ? '3D ✓' : '2D'; $('btn-3d').title = t('d3');
     $('btn-liar').textContent = t('liar'); $('btn-pull').textContent = t('pull'); $('btn-music').style.opacity = Snd.musicOn() ? 1 : .5;
     $('emote-bar').innerHTML = Object.keys(t('emotes')).map(k => '<button type="button" data-e="' + k + '">' + esc(t('emotes')[k]) + '</button>').join('');
+    $('chat-input').placeholder = t('chatPh'); $('chat-send').textContent = '➤'; $('chat-send').title = t('chatSend'); C.sugKey = '';
     offRules();
     if ($('off-chars')) offChars();
     if (Net.room() && U.screen === 'waiting') renderWaiting(Net.room());
@@ -84,7 +85,7 @@
     $('waiting-hint').textContent = (host ? (n < 2 ? t('needTwo') : '') : t('waitHost')) + (Net.mode() === 'online' ? (room.secure ? ' ' + t('sealedOn') : ' ' + t('sealedOff')) : ''); $('rules-readonly-hint').style.display = host ? 'none' : '';
   }
   function onRoom(room, prev) {
-    U.room = room;
+    U.room = room; chatSync();
     if (!room) { if (U.screen !== 'lobby') { toast(t('hostLeft')); U.view = null; showLobby(); } return; }
     if (room.status === 'lobby') { if (U.screen !== 'waiting') show('waiting'); renderWaiting(room); return; }
     if (room.status === 'play') { if (U.screen !== 'game') { show('game'); Snd.musicStart(); } const g = Net.getG(room); if (g) pushState(g, room); if (room.emote && room.emote.ts !== U.lastEmote) { U.lastEmote = room.emote.ts; if (g && room.emote.key !== Net.mySeat()) showEmote(g.seatKeys.indexOf(room.emote.key), room.emote.k); } }
@@ -175,7 +176,7 @@
     $('game-room-code-label').textContent = Net.mode() === 'online' ? Net.code() + (U.spec ? ' · ' + t('spec') : (Net.specCount() ? ' · 👁' + Net.specCount() : '')) : ''; $('game-room-code-label').style.display = Net.mode() === 'online' ? '' : 'none';
     $('round-chip').textContent = t('round', { n: g.round }) + ' · ' + t('cardShort')[g.target]; { const sg = $('sg-chip'); if (g.opts.shared) { const gn = g.gun[0]; let d = ''; for (let k = 0; k < Sus.CH; k++) d += '<i class="' + (k < gn.pos ? 'used' : '') + '"></i>'; sg.innerHTML = '🔫 ' + t('sharedChip') + ' <span class="sg-ch">' + d + '</span>'; sg.style.display = ''; sg.onmouseenter = e => { const r = sg.getBoundingClientRect(); showGun(0, r.left, r.bottom + 40); }; sg.onmouseleave = () => hideGun(); sg.onclick = () => { const r = sg.getBoundingClientRect(); showGun(0, r.left, r.bottom + 40, true); }; } else sg.style.display = 'none'; } { const lp = $('log-panel'), st = lp.scrollTop; lp.innerHTML = logHTML(g); lp.scrollTop = st; }
     if (U.d3) { S3().setView(U.spec && U.cam === 'side' ? 'side' : U.me); S3().sync(g, { me: U.me }); }
-    renderControls(g); tension(g);
+    renderControls(g); tension(g); chatSuggest();
   }
   function tension(g) {
     let T = .15; if (g.phase === 'trigger') { const s = g.shooters[g.sidx]; T = .4 + (Sus.gunOf(g, s).pos / 6) * .6; } else { const alive = g.alive.filter(Boolean).length; T = .15 + Math.max(0, 4 - alive) * .12 + g.gun.reduce((a, x, i) => a + (g.alive[i] ? x.pos : 0), 0) / (6 * alive) * .35; }
@@ -350,7 +351,7 @@
     modal('<h3>' + t('leaveQ') + '</h3><p class="muted center" id="m-leave-txt">' + leaveText() + '</p><button type="button" class="btn btn-block" id="m-stay">' + t('leaveStay') + '</button><button type="button" class="btn btn-secondary btn-block" id="m-leave-yes">' + t('leaveYes') + '</button>');
     const st = $('m-stay'), ye = $('m-leave-yes'); if (st) { st.onclick = closeModal; st.focus(); } if (ye) ye.onclick = leaveToLobby;
   }
-  async function leaveToLobby() { clearTimeout(U.botT); clearTimeout(U.talkT); U.view = null; U.queue = []; U.busy = false; closeModal(); await Net.leave(); document.body.classList.remove('tense'); Snd.setTension(0); showLobby(); }
+  async function leaveToLobby() { clearTimeout(U.botT); clearTimeout(U.talkT); C.code = null; U.view = null; U.queue = []; U.busy = false; closeModal(); await Net.leave(); document.body.classList.remove('tense'); Snd.setTension(0); showLobby(); }
 
   // ---- revolver info: hover the gun (or its seat chip); tap on touch screens ----
   function showGun(p, x, y, sticky) {
@@ -363,8 +364,56 @@
   }
   const clampN = (v, a, b) => Math.max(a, Math.min(b, v));
   function hideGun(force) { if (U.gunSticky && !force) return; U.gunSticky = false; $('gunpanel').classList.remove('on'); }
+  // ---------------------------------------------------------------- table chat (online rooms) ----
+  // Messages live in roomChats/<room> (sus-net.js). Every message goes into the chat list; a seated sender's line also pops up over their head (2D bubble / 3D board), like the bots' table talk.
+  // While you type, the box suggests lines in the bots' own voice (talk.acc / talk.accNo filled with the real names, card and your real count) plus a few short chat lines.
+  const C = { code: null, seen: new Set(), t0: 0, sugKey: '', sug: [], last: 0 };
+  const plain = x => String(x).toLowerCase().replace(/đ/g, 'd').normalize('NFD').replace(/[̀-ͯ]/g, '');
+  function chatReset() { C.code = Net.code(); C.seen = new Set(); C.t0 = Date.now(); $('chat-log').innerHTML = ''; }
+  function chatSync() { const on = Net.mode() === 'online'; document.body.classList.toggle('has-chat', on); if (!on) C.code = null; else if (C.code !== Net.code()) chatReset(); }
+  function onChatMsg(m, key) {
+    if (C.code !== Net.code()) chatReset(); if (C.seen.has(key)) return; C.seen.add(key);
+    const g = U.view, i = g && m.k ? g.seatKeys.indexOf(m.k) : -1, si = Net.SEATK.indexOf(m.k), col = si >= 0 ? SEATCOL[si] : '#a9ccd3', text = String(m.x).slice(0, 120);
+    const log = $('chat-log'), stick = log.scrollHeight - log.scrollTop - log.clientHeight < 40, el = document.createElement('div');
+    el.className = 'chat-line' + (m.u === Net.MY_UID ? ' mine' : ''); el.innerHTML = '<b style="color:' + col + '">' + esc(String(m.n || '?').slice(0, 16)) + (m.k ? '' : ' <small>' + t('chatSpec') + '</small>') + '</b> ' + esc(text);
+    log.appendChild(el); while (log.children.length > 80) log.firstChild.remove(); if (stick) log.scrollTop = log.scrollHeight;
+    if (i >= 0 && U.screen === 'game' && Date.now() - C.t0 > 1500) {          // history that arrives while joining is not shown as bubbles
+      const ms = reduce() ? 3000 : 3500 + text.length * 40;
+      if (U.d3) S3().say(i, text, g.names[i], SEATCOL[i % SEATCOL.length], ms);
+      else { const b = $('say-' + i); if (b) { b.classList.toggle('below', b.parentElement.getBoundingClientRect().top < 150); bubble(i, text, ms, 'talk'); } }
+      if (m.u !== Net.MY_UID) Snd.play('select');
+    }
+  }
+  function chatSend() {
+    const inp = $('chat-input'), v = inp.value.trim(); if (!v || Date.now() - C.last < 600) return;
+    C.last = Date.now(); inp.value = ''; C.sugKey = ''; Net.chatSend(v); chatSuggest();
+  }
+  function chatPool(g) {
+    const me = U.me, T = t('talk'); let to = !U.spec && g.last && g.last.by !== me && g.alive[g.last.by] ? g.last.by : -1;      // {to} = the player who just played, else the previous one still alive
+    if (to < 0 && !U.spec) for (let d = 1; d < g.n; d++) { const j = (me - d + g.n) % g.n; if (g.alive[j]) { to = j; break; } }
+    const name = to >= 0 ? g.names[to] : null, n = U.spec ? 0 : g.hands[me].filter(c => c.k === g.target).length, out = new Set();
+    const add = arr => arr.forEach(x => { if (name == null && x.includes('{to}')) return; out.add(x.replace(/\{(\w+)\}/g, (m, w) => w === 'n' ? n : w === 'to' ? name : w === 'c' ? t('cardShort')[g.target] : m)); });
+    if (n >= 2) add(T.acc); add(T.accNo); add(t('chatSug')); return [...out];
+  }
+  function chatSuggest() {
+    const g = U.view, box = $('chat-sug'), q = plain($('chat-input').value).replace(/\s+/g, ' ').trim(); if (!g || Net.mode() !== 'online') { box.innerHTML = ''; C.sug = []; return; }
+    const key = g.id + ':' + g.seq + ':' + LANG + ':' + q; if (key === C.sugKey) return; C.sugKey = key;
+    const pool = chatPool(g), words = q.split(' ').filter(Boolean);
+    let res = words.length ? pool.filter(x => { const p = plain(x); return p !== q && words.every(w => p.includes(w)); }).sort((a, b) => plain(a).indexOf(words[0]) - plain(b).indexOf(words[0])) : pool.sort(() => Math.random() - .5);
+    C.sug = res.slice(0, 4); box.innerHTML = C.sug.map((x, k) => '<button type="button" data-k="' + k + '">' + esc(x) + '</button>').join('');
+  }
+  function wireChat() {
+    const inp = $('chat-input'), box = $('chat'); Net.onChat(onChatMsg);
+    $('chat-form').onsubmit = e => { e.preventDefault(); chatSend(); };
+    inp.addEventListener('input', chatSuggest);
+    inp.addEventListener('focus', () => { box.classList.add('typing'); chatSuggest(); });
+    inp.addEventListener('blur', () => setTimeout(() => { if (document.activeElement !== inp) box.classList.remove('typing'); }, 250));      // the delay lets a tap on a suggestion land first
+    inp.addEventListener('keydown', e => { if (e.key === 'Tab' && !e.shiftKey && C.sug.length) { e.preventDefault(); inp.value = C.sug[0]; C.sugKey = ''; chatSuggest(); } else if (e.key === 'Escape') inp.blur(); });
+    $('chat-sug').addEventListener('mousedown', e => e.preventDefault());
+    $('chat-sug').onclick = e => { const b = e.target.closest('button'); if (!b) return; inp.value = C.sug[+b.dataset.k] || ''; C.sugKey = ''; inp.focus(); chatSuggest(); };
+  }
   function wire() {
-    langSelects(); document.querySelectorAll('.tab-btn').forEach(b => b.onclick = () => { if (b.disabled) return; document.querySelectorAll('.tab-btn').forEach(x => x.classList.toggle('active', x === b)); document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.id === 'tab-' + b.dataset.tab)); });
+    langSelects(); wireChat(); document.querySelectorAll('.tab-btn').forEach(b => b.onclick = () => { if (b.disabled) return; document.querySelectorAll('.tab-btn').forEach(x => x.classList.toggle('active', x === b)); document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.id === 'tab-' + b.dataset.tab)); });
     $('btn-start-offline').onclick = () => { const n = needName(); if (!n) return; Snd.unlock(); Net.startLocal(n, U.settings, U.myChar); };
     $('btn-resume').onclick = () => { Snd.unlock(); Net.restoreLocal(); };
     $('btn-create-room').onclick = async () => { const n = needName(); if (!n) return; try { await Net.createOnline(n, U.myChar); } catch (e) { toast(t('onlineOff')); } };
